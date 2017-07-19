@@ -51,13 +51,14 @@ Here's what I propose: a new `f :> g` infix operator for left-to-right compositi
     - [[Call]]:
         1. Let *this* be the current context.
         2. Let *args* be the list of arguments passed.
-        3. Let *inner* be ? *f*.[[Call]](*this*, *args*) (in JS, this would be `f.apply(this, args)`).
-        4. Let *result* be ? *g*.[[Call]](*this*, <<*inner*>>) (in JS, this would be `g.call(this, result)`.
+        3. Let *inner* be ? *f*.[[Call]]\(*this*, *args*) (in JS, this would be `f.apply(this, args)`).
+        4. Let *result* be ? *g*.[[Call]]\(*this*, <<*inner*>>) (in JS, this would be `g.call(this, result)`.
         5. Return *result*.
     - [[Construct]] (if *f* has a [[Construct]] internal method):
         1. Let *args* be the list of arguments passed.
-        2. Let *inner* be ? *f*.[[Construct]](*args*) (in JS, this would be `new f(...args)`).
-        3. Let *result* be ? *g*.[[Call]](**undefined**, <<*inner*>>) (in JS, this would be `g(result)`.
+        2. Let *newTarget* be **new.target**.
+        2. Let *inner* be ? *f*.[[Construct]]\(*newTarget*, *args*) (in JS, this would be `new f(...args)`).
+        3. Let *result* be ? *g*.[[Call]]\(**undefined**, <<*inner*>>) (in JS, this would be `g(result)`.
         4. Return *result*.
 4. Set the length of *composed* to the length of *f*.
 5. Return *composed*.

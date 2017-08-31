@@ -46,9 +46,12 @@ Here's what I propose:
         if (typeof g !== "function") throw new TypeError("Expected `g` to be a function");
         return Object.defineProperty(
             function () {
-                return new.target != null
-                    ? g(new f(...arguments))
-                    : g(f(...arguments);
+                if (new.target != null) {
+                    var inst = new f(...arguments)
+                    return g.call(inst, inst)
+                } else {
+                    return g.call(this, f.call(this, ...arguments))
+                }
             },
             "length", {value: f.length}
         );

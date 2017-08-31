@@ -36,27 +36,25 @@ These are, of course, very convenient functions to have, but it's very inefficie
 
 ## Proposed syntax/semantics
 
-Here's what I propose:
+Here's what I propose: A new `f :> g` infix operator for left-to-right composition, and `g <: f` for right-to-left composition, that does effectively this:
 
-1. A new `f :> g` infix operator for left-to-right composition, and `g <: f` for right-to-left composition, that does effectively this:
-
-    ```js
-    function compose(f, g) {
-        if (typeof f !== "function") throw new TypeError("Expected `f` to be a function");
-        if (typeof g !== "function") throw new TypeError("Expected `g` to be a function");
-        return Object.defineProperty(
-            function () {
-                if (new.target != null) {
-                    var inst = new f(...arguments)
-                    return g.call(inst, inst)
-                } else {
-                    return g.call(this, f.call(this, ...arguments))
-                }
-            },
-            "length", {value: f.length}
-        );
-    }
-    ```
+```js
+function compose(f, g) {
+    if (typeof f !== "function") throw new TypeError("Expected `f` to be a function");
+    if (typeof g !== "function") throw new TypeError("Expected `g` to be a function");
+    return Object.defineProperty(
+        function () {
+            if (new.target != null) {
+                var inst = new f(...arguments)
+                return g.call(inst, inst)
+            } else {
+                return g.call(this, f.call(this, ...arguments))
+            }
+        },
+        "length", {value: f.length}
+    );
+}
+```
 
 ## Why an operator, not a function?
 

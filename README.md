@@ -53,6 +53,13 @@ function compose(f, g) {
 }
 ```
 
+Function composition is associative like this:
+
+- `f :> g :> h` is equivalent to `f :> (g :> h)`
+- `h <: g <: f` is equivalent to `(h <: g) <: f`
+
+This is so if a chain is constructed, the rest of the chain is called with `this` set to the same newly constructed instance rather than the transformed value being passed as an argument.
+
 ## Why an operator, not a function?
 
 **Pros:**

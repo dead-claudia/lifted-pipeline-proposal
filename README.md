@@ -30,35 +30,24 @@ These are, of course, very convenient functions to have, but it's very inefficie
 
 1. It's possible to create pipelines which are as fast, if not faster, than standard function calls.
 
-2. Engines can better optimize the types. In the example language implementation above, which is the usual optimized function implementation, `x` would be quickly marked as megamorphic, and the return value is generally not optimized during execution.
+2. Engines can better optimize the types. In the example language implementation above, which is the usual optimized function implementation, `result` would be quickly marked as megamorphic, since the return value is generally not optimized during execution.
 
-3. [[Call]] and [[Construct]] can be special-cased for these, knowing they require minimal stack manipulation and are relatively trivial to implement. Also, after you verify the types, you don't need to type-check the functions when calling them.
+3. The call sequence can be special-cased for these, knowing they require minimal stack manipulation and are relatively trivial to implement. Also, after you verify the types, you don't need to type-check the functions when calling them.
 
 ## Proposed syntax/semantics
 
-Here's what I propose: A new `f :> g` infix operator for left-to-right composition, and `g <: f` for right-to-left composition, that does effectively this (mod a few nuances like prototype/length adjustment):
+Here's what I propose: A new `f :> g` infix operator for left-to-right composition, and `g <: f` for right-to-left composition, that basically does this:
 
 ```js
 function compose(f, g) {
     if (typeof f !== "function") throw new TypeError("Expected `f` to be a function");
     if (typeof g !== "function") throw new TypeError("Expected `g` to be a function");
-    return function () {
-        if (new.target != null) {
-            var inst = Reflect.construct(f, new.target, arguments)
-            return g.call(inst, inst)
-        } else {
-            return g.call(this, Reflect.apply(f, this, arguments))
-        }
-    };
+    return Object.defineProperty(
+        {""(...args) { return g.call(this, f.call(this, ...args)) }}[""],
+        "length", {value: f.length}
+    );
 }
 ```
-
-Function composition is associative like this:
-
-- `f :> g :> h` is equivalent to `f :> (g :> h)`
-- `h <: g <: f` is equivalent to `(h <: g) <: f`
-
-This is so if a chain is constructed, the rest of the chain is called with `this` set to the same newly constructed instance rather than the transformed value being passed as an argument.
 
 ## Why an operator, not a function?
 

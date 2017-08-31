@@ -44,10 +44,10 @@ function compose(f, g) {
     if (typeof g !== "function") throw new TypeError("Expected `g` to be a function");
     return function () {
         if (new.target != null) {
-            var inst = new f(...arguments)
+            var inst = Reflect.construct(f, new.target, arguments)
             return g.call(inst, inst)
         } else {
-            return g.call(this, f.call(this, ...arguments))
+            return g.call(this, Reflect.apply(f, this, arguments))
         }
     };
 }

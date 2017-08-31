@@ -43,9 +43,12 @@ function compose(f, g) {
     if (typeof f !== "function") throw new TypeError("Expected `f` to be a function");
     if (typeof g !== "function") throw new TypeError("Expected `g` to be a function");
     return function () {
-        return g(new.target != null
-            ? new f(...arguments)
-            : f(...arguments));
+        if (new.target != null) {
+            var inst = new f(...arguments)
+            return g.call(inst, inst)
+        } else {
+            return g.call(this, f.call(this, ...arguments))
+        }
     };
 }
 ```

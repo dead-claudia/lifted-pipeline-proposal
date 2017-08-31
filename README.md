@@ -36,7 +36,7 @@ These are, of course, very convenient functions to have, but it's very inefficie
 
 ## Proposed syntax/semantics
 
-Here's what I propose: A new `f :> g` infix operator for left-to-right composition, and `g <: f` for right-to-left composition, that does effectively this (mod prototype/length adjustment):
+Here's what I propose: A new `f :> g` infix operator for left-to-right composition, and `g <: f` for right-to-left composition, that does effectively this (mod a few nuances like prototype/length adjustment):
 
 ```js
 function compose(f, g) {

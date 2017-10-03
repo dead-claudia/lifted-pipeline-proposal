@@ -26,6 +26,39 @@ function compose(f, ...fs) {
 }
 ```
 
+It lets you do turn code like this:
+
+```js
+function toSlug(input) {
+    return encodeURIComponent(
+        input.split(" ")
+            .map(str => str.toLowerCase())
+            .join("-")
+    )
+}
+```
+
+to this:
+
+```js
+const toSlug = compose(
+    encodeURIComponent,
+    _ => _.split(" "),
+    _ => _.map(str => str.toLowerCase()),
+    _ => _.join("-")
+)
+```
+
+Or, using this proposal:
+
+```js
+const toSlug =
+    encodeURIComponent
+    :> _ => _.split(" ")
+    :> _ => _.map(str => str.toLowerCase())
+    :> _ => _.join("-")
+```
+
 These are, of course, very convenient functions to have, but it's very inefficient to implement at the language level. Instead, if it was implemented at the engine level, you could optimize it in ways not possible at the language level:
 
 1. It's possible to create pipelines which are as fast, if not faster, than standard function calls.
@@ -86,3 +119,26 @@ This is most certainly *not* on its own little island. Here's a few other propos
 - Partial application: https://github.com/rbuckton/proposal-partial-application
 - Do expressions: https://gist.github.com/dherman/1c97dfb25179fa34a41b5fff040f9879
 - Pattern matching: https://github.com/tc39/proposal-pattern-matching
+
+Here's an example of this with some of the other proposals:
+
+```js
+// Original
+import * as _ from "lodash"
+function toSlug(input) {
+    return encodeURIComponent(
+        _(input)
+            .split(" ")
+            .map(_.toLower)
+            .join("-")
+    )
+}
+
+// With this proposal + the partial application proposal + Lodash
+import * as _ from "lodash"
+const toSlug =
+    encodeURIComponent
+    :> _.split(?, " ")
+    :> _.map(?, _.toLower)
+    :> _.join(?, "-")
+```

@@ -83,6 +83,6 @@ This is most certainly *not* on its own little island. Here's a few other propos
 
 - `this` binding/pipelining: https://github.com/tc39/proposal-bind-operator
 - Function pipelining: https://github.com/tc39/proposal-pipeline-operator
-- Partial application: https://github.com/gilbert/es-papp
+- Partial application: https://github.com/rbuckton/proposal-partial-application
 - Do expressions: https://gist.github.com/dherman/1c97dfb25179fa34a41b5fff040f9879
 - Pattern matching: https://github.com/tc39/proposal-pattern-matching

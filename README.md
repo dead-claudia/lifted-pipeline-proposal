@@ -110,7 +110,7 @@ These are just ideas; none of them really have to make it.
 - Composed async functions: `async f :> g :> ...` or `async ... <: g <: f` (basically `async` *ComposedFunctionChain*)
 - Optional-propagating chain: `f ?:> g` or `g <:? f` (adding a `?` behind the operator)
 
-Alternatively, we could prefer helper functions for each, optionally reifying some of them in the spec (this could also play more nicely with the pipeline operator proposal):
+Alternatively, we could prefer helper functions for each (as originally proposed by [James Forbes](https://github.com/JAForbes)), optionally reifying some of them in the spec (this could also play more nicely with the pipeline operator proposal):
 
 ```js
 const then = f => x => x.then(f)

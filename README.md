@@ -110,6 +110,45 @@ These are just ideas; none of them really have to make it.
 - Composed async functions: `async f :> g :> ...` or `async ... <: g <: f` (basically `async` *ComposedFunctionChain*)
 - Optional-propagating chain: `f ?:> g` or `g <:? f` (adding a `?` behind the operator)
 
+Alternatively, we could prefer helper functions for each, optionally reifying some of them in the spec (this could also play more nicely with the pipeline operator proposal):
+
+```js
+const then = f => x => x.then(f)
+const map = f => x => x.map(f)
+const applyTo = x => f => f(x)
+const ifExists = f => x => x != null ? f(x) : x
+const each = f => x => { x.forEach(f); return x }
+```
+
+These could be used like so:
+
+```js
+const getTemperatureFromServerInLocalUnits =
+  getTemperatureKelvinFromServerAsync
+  :> then(convertTemperatureKelvinToLocalUnits)
+```
+
+To reify and simplify this, we could add a `Symbol.lift` hook and `Function.lift(func)` to allow lifted composition/application without special syntax. It'd work like this:
+
+```js
+Function.lift = func => x => {
+    if (x == null) {
+        return x
+    } else if (typeof x[Symbol.lift] === "function") {
+        return x[Symbol.lift](x => func(x))
+    } else {
+        return func(x)
+    }
+}
+```
+
+- This is roughly equivalent to Fantasy Land's [`map`](https://github.com/fantasyland/fantasy-land#functor) method, although much more permissive.
+- You could add `Symbol.lift` to promises, functions, and most language iterables/iterators.
+- Lifted functions, for usability, return the argument without calling `func` for `null`/`undefined`.
+- This would also be independently helpful for the pipeline operator proposal.
+- `Symbol.lift` is not applied recursively, since this is functionally closer to iteration than thenable resolution.
+- Yes, this would probably set off some purists, because of its dynamicism.
+
 ## Related strawmen/proposals
 
 This is most certainly *not* on its own little island. Here's a few other proposals that also deal with functions and/or functional programming in general:
@@ -134,7 +173,7 @@ function toSlug(input) {
     )
 }
 
-// With this proposal + the partial application proposal + Lodash
+// With this proposal + the partial application proposal
 import * as _ from "lodash"
 const toSlug =
     encodeURIComponent

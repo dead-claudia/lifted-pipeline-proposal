@@ -42,10 +42,10 @@ to this:
 
 ```js
 const toSlug = compose(
-    encodeURIComponent,
     _ => _.split(" "),
     _ => _.map(str => str.toLowerCase()),
-    _ => _.join("-")
+    _ => _.join("-"),
+    encodeURIComponent
 )
 ```
 
@@ -53,10 +53,10 @@ Or, using this proposal:
 
 ```js
 const toSlug =
-    encodeURIComponent
-    :> _ => _.split(" ")
+    _ => _.split(" ")
     :> _ => _.map(str => str.toLowerCase())
     :> _ => _.join("-")
+    :> encodeURIComponent
 ```
 
 These are, of course, very convenient functions to have, but it's very inefficient to implement at the language level. Instead, if it was implemented at the engine level, you could optimize it in ways not possible at the language level:

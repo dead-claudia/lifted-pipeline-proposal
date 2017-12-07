@@ -13,7 +13,7 @@ Function composition has been used for years, even in JS applications. It's one 
 There's also the [numerous npm modules](https://www.npmjs.com/search?q=function+composition) and manual implementations (it's trivial to write a basic implementation). Conceptually, it's pretty basic:
 
 ```js
-function compose(f, ...fs) {
+function composeRight(f, ...fs) {
     return function () {
         var result = f.apply(this, arguments);
 
@@ -41,7 +41,7 @@ function toSlug(input) {
 to this:
 
 ```js
-const toSlug = compose(
+const toSlug = composeRight(
     _ => _.split(" "),
     _ => _.map(str => str.toLowerCase()),
     _ => _.join("-"),

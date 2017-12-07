@@ -42,10 +42,10 @@ to this:
 
 ```js
 const toSlug = compose(
-    encodeURIComponent,
     _ => _.split(" "),
     _ => _.map(str => str.toLowerCase()),
-    _ => _.join("-")
+    _ => _.join("-"),
+    encodeURIComponent
 )
 ```
 

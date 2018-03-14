@@ -130,14 +130,16 @@ Here's how that `Symbol.lift` would be implemented for some of these types:
     Function.prototype[Symbol.lift] = function (g) {
         const f = this
         // Note: this should only be callable.
-        return {""(...args) { return g.call(this, f.call(this, ...args)) }}[""]
+        return function (...args) {
+            return g.call(this, f.call(this, ...args))
+        }
     }
     ```
 
-- `Array.prototype[Symbol.lift]`: Equivalent to literally this, mod extra type checking and the method itself being only callable:
+- `Array.prototype[Symbol.lift]`: Equivalent to literally this, mod extra type checking, the method's name, and the method itself being only callable:
 
     ```js
-    Array.prototype[Symbol.lift] = {["[Symbol.lift]"](func) {
+    Array.prototype[Symbol.lift] = function (func) {
         const array = Object(this)
         const length = array.length
         const result = new Array(length)
@@ -147,7 +149,7 @@ Here's how that `Symbol.lift` would be implemented for some of these types:
         }
 
         return result
-    }}["[Symbol.lift]"]
+    }
     ```
 
     The reason this is done is to avoid the existing issues with sparse arrays being harder to optimize and so the code gen is trivial.
@@ -239,52 +241,222 @@ These clearly rhyme: they're all in the common form of `foo.method(x => func(x))
 
 These are just ideas; none of them really have to make it.
 
-- An `Object.box(value)` to provide as an escape hatch which also facilitates optional propagation. Here's an example with help from the [optional chaining proposal](https://github.com/tc39/proposal-optional-chaining):
+### `Object.box(value)`
 
-    ```js
-    // Old
-    function getUserBanner(banners, user) {
-        if (user && user.accountDetails && user.accountDetails.address) {
-            return banners[user.accountDetails.address.province];
-        }
+An `Object.box(value)` to provide as an escape hatch which also facilitates optional propagation. Here's an example with help from the [optional chaining proposal](https://github.com/tc39/proposal-optional-chaining):
+
+```js
+// Old
+function getUserBanner(banners, user) {
+    if (user && user.accountDetails && user.accountDetails.address) {
+        return banners[user.accountDetails.address.province];
     }
+}
 
-    // New
-    function getUserBanner(banners, user) {
-        return Object.box(user?.accountDetails?.address?.province)
-            :> _ => banners[_]
-    }
-    ```
+// New
+function getUserBanner(banners, user) {
+    return Object.box(user?.accountDetails?.address?.province)
+        :> _ => banners[_]
+}
+```
 
-    - This gets uncomfortably verbose...
-    - It *is* a little more flexible.
+- This gets uncomfortably verbose...
+- It *is* a little more flexible.
 
-- Corresponding `x ?> f` and `f <? x` for optional propagation
-    - Extra syntax for such a simple case is not something I'm a huge fan of.
-        - There's already seemingly precedent in the optional chaining operators, so does this have a chance?
-    - Should this really be `?|>`/`<|?` to mirror the pipeline operator?
-        - It's still kind of lifting, so... ¯\\_(ツ)_/¯
-        - Maybe `?.>`/`<.?`? (Meh...little too obscure-looking)
-    - It can make for nicer code, though:
+### Optional propagation operator
 
-    ```js
-    function getUserBanner(banners, user) {
-        return user?.accountDetails?.address?.province ?> _ => banners[_]
-    }
-    ```
+Corresponding `x ?> f` and `f <? x` for optional propagation.
+
+- Extra syntax for such a simple case is not something I'm a huge fan of.
+    - There's already seemingly precedent in the optional chaining operators, so does this have a chance?
+- Should this really be `?|>`/`<|?` to mirror the pipeline operator?
+    - It's still kind of lifting, so... ¯\\_(ツ)_/¯
+    - Maybe `?.>`/`<.?`? (Meh...little too obscure-looking)
+- It can make for nicer code, though:
+
+```js
+function getUserBanner(banners, user) {
+    return user?.accountDetails?.address?.province ?> _ => banners[_]
+}
+```
+
+### Pipeline extensions
 
 - `await` in pipelines: `x :> await f` (this would desugar to `await (x :> f)`)
-    - `yield` in pipelines: `x :> yield` (this would desugar to `yield x`)
-    - This is subject to [this discussion here](https://github.com/tc39/proposal-pipeline-operator/wiki), as everything there is relevant here.
+- `yield` in pipelines: `x :> yield` (this would desugar to `yield x`)
+- This is subject to [this discussion here](https://github.com/tc39/proposal-pipeline-operator/wiki), as everything there is relevant here.
 
-- A way to expand this further to lift across binary actions (instead of unary ones like here).
-    - This is not simply `x :> (a, b) => ...`, but a ternary operation like `x.lift2(y, (a, b) => ...)`
-    - This could allow something like summing the values of two promises without much effort: `Promise.resolve(1).lift2(Promise.resolve(2), (a, b) => a + b)`
-    - This is similar to [Fantasy Land's `Apply` type](https://github.com/fantasyland/fantasy-land#apply), but their formulation should probably be avoided for pragmatic reasons.
-        - It necessitates closures nested within values, which is not easy to optimize on the fly.
-        - Note that the two variants are [mathematically specifiable in terms of each other](https://hackage.haskell.org/package/base-4.10.1.0/docs/Control-Applicative.html).
-    - Ideally, the main method/function should make repeated nested application easy, like something to the effect of `lift(...xs, (...as) => ...)`.
-        - Ramda provides this method (via a different prototype) for Fantasy Land applicatives, but we should make that the default, not something you have to request.
+### Lift across N-ary functions
+
+A way to expand this further to lift across binary actions (instead of unary ones like here).
+
+- This is not simply `x :> (a, b) => ...`, but a ternary operation like `x.lift2(y, (a, b) => ...)`
+- This could allow something like summing the values of two promises without much effort: `Promise.resolve(1).lift2(Promise.resolve(2), (a, b) => a + b)`
+- This is similar to [Fantasy Land's `Apply` type](https://github.com/fantasyland/fantasy-land#apply), but their formulation isn't ideal for pragmatic reasons.
+    - It necessitates closures nested within values, which is not easy to optimize on the fly.
+    - Note that the two variants are [mathematically specifiable in terms of each other](https://hackage.haskell.org/package/base-4.10.1.0/docs/Control-Applicative.html).
+    - It does appear that in *some* cases (particularly with function instances), it's easier to do `x.ap(y.map(f)))` than `x.lift2(y, f)`. This is not the case with most, however.
+- Ideally, the main method/function should make repeated nested application easy, like something to the effect of `lift(...xs, (...as) => ...)`.
+    - Ramda provides this method (via a different prototype) for Fantasy Land applicatives, but we should make that the default, not something you have to request.
+
+### Syntax for loops and pipeline manipulation
+
+This requires a new primitive like `Symbol.chain` for invoking a callback and returning based on its entries.
+
+- Callback returns the next value or `null`/`undefined` to break
+- Falls back to `Symbol.lift`, ignoring future entries on end
+
+**Concept syntax:**
+
+These desugar to `Symbol.chain`/`Symbol.lift`, but with some somewhat complex logic.
+
+```js
+coll >:> func; func <:< coll
+// Compiles to:
+invokeChainSync(coll, func)
+
+coll >:> await func; await func <:< coll
+// Compiles to:
+invokeChainAsync(coll, func)
+
+// Helper (unoptimized)
+function invokeChainResult(result, allowCollection) {
+    if (typeof result[Symbol.chain] === "function") return result
+    if (typeof result[Symbol.iterator] === "function") {
+        if (allowCollection) return result
+        for (const key of result) return key
+        return undefined
+    }
+    throw new TypeError()
+}
+
+function invokeChainGen(coll, init) {
+    let method = coll[Symbol.chain]
+    if (method != null) {
+        return method.call(coll, init(true))
+    } else {
+        return coll[Symbol.lift](init(false))
+    }
+}
+
+function invokeChainSync(coll, func) {
+    if (typeof func !== "function") throw new TypeError()
+    return invokeChainGen(coll, allowCollection => (...xs) => {
+        if (func == null) return undefined
+        const result = func(...xs)
+        if (result == null) func = undefined
+        // Unlikely, but we still need to account for it.
+        if (func == null) return undefined
+        return invokeChainResult(result, allowCollection)
+    })
+}
+
+async function invokeChainAsync(coll, func) {
+    if (typeof func !== "function") throw new TypeError()
+    let resolve
+    const p = new Promise(r => resolve = r)
+    let count = 1
+
+    try {
+        return await invokeChainGen(coll, allowCollection => async (...xs) => {
+            if (count === 0) return
+            let result = func(...xs)
+            // Unlikely, but we still need to account for it.
+            if (count === 0) return
+            try {
+                count++
+                result = await result
+                if (result == null) { func = undefined; count = 0 }
+            } finally {
+                if (resolve != null && (count === 0 || --count === 0)) {
+                    resolve()
+                    resolve = undefined
+                }
+            }
+            // Unlikely, but we still need to account for it.
+            if (count === 0) return
+            return invokeChainResult(result, allowCollection)
+        })
+    } finally {
+        if (count !== 0 && --count !== 0) await p
+        resolve = undefined
+        count = 0
+    }
+}
+```
+
+- When the callback returns `null` or `undefined`, it returns that directly.
+- When the callback returns a chainable, it's returned directly (so it works for things like flattening).
+- When the callback returns an iterable, it's returned directly (for performance).
+- For anything else, it throws.
+- The `x >:> await f` variant is *not* permitted outside async contexts.
+- With the `x >:> await f` variant, its values are awaited as well as the whole collection and its callbacks.
+    - If you want to just map over a list within a promise, you can just do `promise.then(list => list >:> ...)`.
+- This is probably the most complicated case.
+
+**Concept implementations:**
+
+- `Array.prototype[Symbol.chain]`: Basically the proposed `Array.prototype.flatMap`, but aware of the rules above.
+
+- `Generator.prototype[Symbol.chain]`, etc.: Flattens iterables out.
+
+- `Function.prototype[Symbol.chain]`: Implemented as this:
+
+    ```js
+    Function.prototype[Symbol.chain] = function (g) {
+        const f = this
+        return function (...xs) {
+            const result = g.call(this, f.call(this, ...xs))
+            return result != null ? result.call(this, ...xs) : undefined
+        }
+    }
+    ```
+
+    - I'm not sure about 1. the utility of this and 2. whether this can be sanely implemented.
+
+**Stream Operators:**
+
+Here's some common stream operators, using this idea to be implemented generically:
+
+```js
+// Usage: x >:> distinct(by?)
+function distinct(by = Object.is) {
+    let hasPrev = false, prev
+    return x => {
+        const memo = hasPrev
+        hasPrev = true
+        return memo || by(prev, prev = x) ? [x] : []
+    }
+}
+
+// Usage: x >:> filter(func)
+function filter(func) {
+    let hasPrev = false, prev
+    return x => func(x) ? [x] : []
+}
+
+// Usage: x >:> scan(func)
+function scan(func) {
+    let hasPrev = false, prev
+    return x => {
+        const memo = hasPrev
+        hasPrev = true
+        return memo ? [prev, func(prev, prev = x)] : [prev = x]
+    }
+}
+
+// Usage: x |> each(func)
+function each(func) {
+    return coll => coll >:> (func :> test => test ? [] : undefined)
+}
+
+// Usage: x |> eachAwait(func)
+function eachAwait(func) {
+    return coll => coll >:> await (func :> test => test ? [] : undefined)
+}
+```
+
+TODO: more
 
 ## Inspiration
 

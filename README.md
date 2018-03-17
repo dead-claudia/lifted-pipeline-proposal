@@ -304,11 +304,10 @@ A way to expand this further to lift across binary actions (instead of unary one
 This requires a new primitive like `Symbol.chain` for invoking a callback and returning based on its entries.
 
 - Callback returns the next value or `null`/`undefined` to break
-- Falls back to `Symbol.lift`, ignoring future entries on end
 
 **Concept syntax:**
 
-These desugar to `Symbol.chain`/`Symbol.lift`, but with some somewhat complex logic.
+These desugar to `Symbol.chain`, but with some somewhat complex logic.
 
 ```js
 coll >:> func; func <:< coll
@@ -331,12 +330,7 @@ function invokeChainResult(result, allowCollection) {
 }
 
 function invokeChainGen(coll, init) {
-    let method = coll[Symbol.chain]
-    if (method != null) {
-        return method.call(coll, init(true))
-    } else {
-        return coll[Symbol.lift](init(false))
-    }
+    return coll[Symbol.chain](init(true))
 }
 
 function invokeChainSync(coll, func) {
@@ -400,19 +394,7 @@ async function invokeChainAsync(coll, func) {
 
 - `Generator.prototype[Symbol.chain]`, etc.: Flattens iterables out.
 
-- `Function.prototype[Symbol.chain]`: Implemented as this:
-
-    ```js
-    Function.prototype[Symbol.chain] = function (g) {
-        const f = this
-        return function (...xs) {
-            const result = g.call(this, f.call(this, ...xs))
-            return result != null ? result.call(this, ...xs) : undefined
-        }
-    }
-    ```
-
-    - I'm not sure about 1. the utility of this and 2. whether this can be sanely implemented.
+- `Promise.prototype[Symbol.chain]`, etc.: Alias for `Promise.prototype[Symbol.lift]`.
 
 **Stream Operators:**
 

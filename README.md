@@ -434,7 +434,7 @@ function each(func) {
 
 // Usage: x |> eachAwait(func)
 function eachAwait(func) {
-    return coll => coll >:> await (func :> test => test ? [] : undefined)
+    return async coll => coll >:> await (func :> test => test ? [] : undefined)
 }
 ```
 

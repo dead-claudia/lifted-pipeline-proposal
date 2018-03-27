@@ -318,18 +318,15 @@ coll >:> await func; await func <:< coll
 // Compiles to:
 invokeChainAsync(coll, func)
 
-// Helper (unoptimized)
+// Helpers (unoptimized)
 function invokeChainSync(coll, func) {
     if (typeof func !== "function") throw new TypeError()
     return coll[Symbol.chain]((...xs) => {
-        if (func == null) return undefined
-        const result = func(...xs)
-        if (result == null) func = undefined
-        // Unlikely, but we still need to account for it.
-        if (func == null) return undefined
-        if (typeof result[Symbol.chain] === "function") return result
-        if (typeof result[Symbol.iterator] === "function") return [...result]
-        throw new TypeError()
+        const f = func
+        if (f == null) throw new ReferenceError()
+        const result = f(...xs)
+        if (result == null) { func = void 0; return }
+        return castChainReturn(result)
     })
 }
 
@@ -341,31 +338,36 @@ async function invokeChainAsync(coll, func) {
 
     try {
         return await coll[Symbol.chain](async (...xs) => {
-            if (count === 0) return
-            let result = func(...xs)
-            // Unlikely, but we still need to account for it.
-            if (count === 0) return
             try {
+                if (func == null) throw new ReferenceError()
+                let result = func(...xs)
+                // Unlikely, but we still need to account for it.
+                if (func == null) throw new ReferenceError()
                 count++
-                result = await result
-                if (result == null) { func = undefined; count = 0 }
-            } finally {
-                if (resolve != null && (count === 0 || --count === 0)) {
-                    resolve()
-                    resolve = undefined
+                try {
+                    result = await result
+                } finally {
+                    if (count === 0 || --count === 0) { resolve(); resolve = void 0 }
                 }
+                // Unlikely, but we still need to account for it.
+                if (func == null) throw new ReferenceError()
+                if (result == null) { func = void 0; count = 0; return }
+                return castChainReturn(result)
+            } catch (e) {
+                return Promise.reject(e)
             }
-            // Unlikely, but we still need to account for it.
-            if (count === 0) return
-            if (typeof result[Symbol.chain] === "function") return result
-            if (typeof result[Symbol.iterator] === "function") return [...result]
-            throw new TypeError()
         })
     } finally {
         if (count !== 0 && --count !== 0) await p
-        resolve = undefined
-        count = 0
+        resolve = void 0; count = 0
     }
+}
+
+function castChainReturn(result) {
+    if (Array.isArray(result)) return result
+    if (typeof result[Symbol.chain] === "function") return result
+    if (typeof result[Symbol.iterator] === "function") return Array.from(result)
+    throw new TypeError()
 }
 ```
 

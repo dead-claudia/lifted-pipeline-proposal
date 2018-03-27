@@ -299,7 +299,7 @@ A way to expand this further to lift across binary actions (instead of unary one
 - Ideally, the main method/function should make repeated nested application easy, like something to the effect of `lift(...xs, (...as) => ...)`.
     - Ramda provides this method (via a different prototype) for Fantasy Land applicatives, but we should make that the default, not something you have to request.
 
-### Syntax for loops and pipeline manipulation
+### Pipeline manipulation
 
 This requires a new primitive like `Symbol.chain` for invoking a callback and returning based on its entries.
 
@@ -319,29 +319,17 @@ coll >:> await func; await func <:< coll
 invokeChainAsync(coll, func)
 
 // Helper (unoptimized)
-function invokeChainResult(result, allowCollection) {
-    if (typeof result[Symbol.chain] === "function") return result
-    if (typeof result[Symbol.iterator] === "function") {
-        if (allowCollection) return result
-        for (const key of result) return key
-        return undefined
-    }
-    throw new TypeError()
-}
-
-function invokeChainGen(coll, init) {
-    return coll[Symbol.chain](init(true))
-}
-
 function invokeChainSync(coll, func) {
     if (typeof func !== "function") throw new TypeError()
-    return invokeChainGen(coll, allowCollection => (...xs) => {
+    return coll[Symbol.chain]((...xs) => {
         if (func == null) return undefined
         const result = func(...xs)
         if (result == null) func = undefined
         // Unlikely, but we still need to account for it.
         if (func == null) return undefined
-        return invokeChainResult(result, allowCollection)
+        if (typeof result[Symbol.chain] === "function") return result
+        if (typeof result[Symbol.iterator] === "function") return [...result]
+        throw new TypeError()
     })
 }
 
@@ -352,7 +340,7 @@ async function invokeChainAsync(coll, func) {
     let count = 1
 
     try {
-        return await invokeChainGen(coll, allowCollection => async (...xs) => {
+        return await coll[Symbol.chain](async (...xs) => {
             if (count === 0) return
             let result = func(...xs)
             // Unlikely, but we still need to account for it.
@@ -369,7 +357,9 @@ async function invokeChainAsync(coll, func) {
             }
             // Unlikely, but we still need to account for it.
             if (count === 0) return
-            return invokeChainResult(result, allowCollection)
+            if (typeof result[Symbol.chain] === "function") return result
+            if (typeof result[Symbol.iterator] === "function") return [...result]
+            throw new TypeError()
         })
     } finally {
         if (count !== 0 && --count !== 0) await p

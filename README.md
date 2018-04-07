@@ -113,12 +113,12 @@ Here's what I propose:
 1. A new low-precedence `f <: x` right-associative infix operator for right-to-left lifted pipelines.
 1. A new well-known symbol `@@lift` that is used by those pipeline operators to dispatch based on type.
 
-The pipeline operators carry these semantics:
+The pipeline operators simply call `Symbol.lift`:
 
 ```js
 function pipe(x, f) {
-    if (typeof f !== "function") throw new TypeError()
-    return x[Symbol.lift](f)
+    if (typeof func !== "function") throw new TypeError()
+    return x[Symbol.lift](x => f(x))
 }
 ```
 
@@ -321,10 +321,10 @@ invokeChainAsync(coll, func)
 // Helpers (unoptimized)
 function invokeChainSync(coll, func) {
     if (typeof func !== "function") throw new TypeError()
-    return coll[Symbol.chain]((...xs) => {
+    return coll[Symbol.chain](x => {
         const f = func
         if (f == null) throw new ReferenceError()
-        const result = f(...xs)
+        const result = f(x)
         if (result == null) { func = void 0; return }
         return castChainReturn(result)
     })

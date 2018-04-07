@@ -94,7 +94,6 @@ These are, of course, very convenient functions to have, but it's very inefficie
 Here's what I propose:
 
 1. A new low-precedence `x :> f` left-associative infix operator for left-to-right lifted pipelines.
-1. A new low-precedence `f <: x` right-associative infix operator for right-to-left lifted pipelines.
 1. A new well-known symbol `@@lift` that is used by those pipeline operators to dispatch based on type.
 
 The pipeline operators simply call `Symbol.lift`:

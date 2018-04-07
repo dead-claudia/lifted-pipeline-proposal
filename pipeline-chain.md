@@ -1,5 +1,7 @@
 # Pipeline manipulation
 
+Sometimes, you want to manipulate the contents of a pipeline. There exist methods that help you do this already, like `Array.prototype.map` and `Array.prototype.filter`, but there currently is no generic way of just defining it for everyone. It'd be nice if we didn't have to filter or uniquify an array, an observable, and a Node.js stream in three different ways. It'd also be nice if we could just have one `scan` and one `uniq` to do it all, rather than one for each type (Lodash `_.transform` and `_.map(array, 'key')` for arrays, `.scan` and `obs.groupBy(func = x => x).mergeAll()` for RxJS observables). This is where this proposal comes in.
+
 This requires a new primitive like `Symbol.chain` for invoking a callback and returning based on its result. The callback returns one of three types (a `TypeError` is thrown otherwise):
 
 - A value with a `Symbol.chain` and/or `Symbol.asyncChain` method, to unwrap
@@ -42,19 +44,18 @@ Here's how `Symbol.chain` would be implemented for some built-in types:
 One easy way to use it is with defining custom stream operators, generically enough you don't usually need to concern yourself about what stream implementation they're using, or even if it's really a stream and not a generator. Here's some common stream operators, implemented using this idea:
 
 ```js
-// Usage: x >:> distinct(by?)
-function distinct(by = Object.is) {
+// Usage: x >:> distinct({by?, with?})
+function distinct({by = (a, b) => a === b, with: get = x => x} = {}) {
     let hasPrev = false, prev
     return x => {
         const memo = hasPrev
         hasPrev = true
-        return memo || by(prev, prev = x) ? [x] : []
+        return !memo || by(prev, prev = get(x)) ? [x] : []
     }
 }
 
 // Usage: x >:> filter(func)
 function filter(func) {
-    let hasPrev = false, prev
     return x => func(x) ? [x] : []
 }
 
@@ -68,18 +69,80 @@ function scan(func) {
     }
 }
 
-// Usage: x |> each(func)
+// Usage: x >:> each(func)
+// Return truthy to break
 function each(func) {
-    return coll => coll >:> (func :> test => test ? undefined : [])
+    return item => func(item) ? undefined : []
 }
 
-// Usage: x |> eachAwait(func)
-function eachAwait(func) {
-    return coll => coll >:> async (func :> test => test ? undefined : [])
+// Usage: x >:> async eachAsync(func)
+// Return truthy to break
+function eachAsync(func) {
+    return async item => await func(item) ? undefined : []
+}
+
+// Usage: x >:> uniq({by?, with?})
+function uniq({by, with: get = x => x} = {}) {
+    const set = by == null ? new Set() : (items => ({
+        has: item => items.some(memo => by(memo, item)),
+        add: item => items.push(item),
+    })([])
+    return item => {
+        const memo = get(item)
+        if (set.has(memo)) return []
+        set.add(memo)
+        return [item]
+    }
 }
 ```
 
-TODO: more
+You can also generically define common collection predicates like `includes` or `every`, which work for observables, arrays, and streams equally (provided they're eagerly iterated), and still short-circuit.
+
+```js
+// Usage: includes(coll, item)
+function includes(coll, item) {
+    let result = false
+    coll >:> x => {
+        if (x !== item) return []
+        result = true
+        return undefined
+    }
+    return result
+}
+
+// Usage: includesAsync(coll, item)
+async function includesAsync(coll, item) {
+    let result = false
+    coll >:> await x => {
+        if (x !== item) return []
+        result = true
+        return undefined
+    }
+    return result
+}
+
+// Usage: every(coll, func)
+function every(coll, func) {
+    let result = true
+    coll >:> x => {
+        if (func(x)) return []
+        result = false
+        return undefined
+    }
+    return result
+}
+
+// Usage: everyAsync(coll, func)
+async function everyAsync(coll, func) {
+    let result = true
+    coll >:> await async x => {
+        if (await func(x)) return []
+        result = false
+        return undefined
+    }
+    return result
+}
+```
 
 ## Helpers
 

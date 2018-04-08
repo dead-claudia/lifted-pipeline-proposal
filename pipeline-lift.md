@@ -138,8 +138,6 @@ Here's how that `Symbol.lift` would be implemented for some of these types:
     }
     ```
 
-- `AsyncGenerator.prototype[Symbol.lift]` and `Generator.prototype[Symbol.lift]` do similar to `Iterable.prototype[Symbol.lift]`. Note that `Symbol.iterator` is not a fallback for `Symbol.lift`.
-
 - `Map.prototype[Symbol.lift]`: Map iteration/update like this:
 
     ```js

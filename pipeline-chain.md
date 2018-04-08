@@ -1,5 +1,7 @@
 # Pipeline manipulation
 
+*If you want the theory, this is roughly and loosely modeled on monads, filterables, with a few pragmatic functional differences and additions.*
+
 Sometimes, you want to manipulate the contents of a pipeline. There exist methods that help you do this already, like `Array.prototype.map` and `Array.prototype.filter`, but there currently is no generic way of just defining it for everyone. It'd be nice if we didn't have to filter or uniquify an array, an observable, and a Node.js stream in three different ways. It'd also be nice if we could just have one `scan` and one `uniq` to do it all, rather than one for each type (Lodash `_.transform` and `_.map(array, 'key')` for arrays, `.scan` and `obs.groupBy(func = x => x).mergeAll()` for RxJS observables). This is where this proposal comes in.
 
 This requires a new primitive like `Symbol.chain` for invoking a callback and returning based on its result. The callback returns one of three types (a `TypeError` is thrown otherwise):

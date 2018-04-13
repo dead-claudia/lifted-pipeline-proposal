@@ -6,7 +6,7 @@ Sometimes, you want to lift across multiple values at once, combining them as yo
 
 Unlike the other two, this one involves only new built-in functions, with no new syntax, and so it can be purely polyfilled. It's pretty simple:
 
-- `Object.combine(...values, func?)` - Lift a function over one or more iterables, calling `func` with each item in each of `colls`.
+- `Object.combine(...values, func?)` - Lift a function over one or more iterables, calling `func` with each item in each of `values`.
     - A `RangeError` is thrown if you don't have at least two items to combine. (You can't "combine" anything with nothing.)
     - If you don't pass `func`, it defaults to just returning the arguments as an array, effectively generating a sequence of combinations.
     - This is in fact variadic, but the last parameter is type-checked as a potential function.

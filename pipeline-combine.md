@@ -26,6 +26,7 @@ Here's how it'd be implemented for some builtins:
     - `Promise.all` will remain more predictable performance-wise for truly variadic allocations.
 
 - `Iterable.prototype[Symbol.combine]`: Works similarly to `Array.prototype[Symbol.combine]`, but returns an iterable instead.
+    - This is surprisingly harder than you'd expect to implement in userland while retaining `for ... of`-like semantics.
 
 - You could implement `Function.prototype[Symbol.combine]` to return `(a, b) => func(this(a), other(b))`, but it's not generally very useful (even in the world of Haskell).
 

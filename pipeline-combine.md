@@ -23,7 +23,7 @@ Here's how it'd be implemented for some builtins:
 
 - `Promise.prototype[Symbol.combine]`: Joins two promises and calls the function when both promises resolve, returning a new promise with the function's result.
     - This is *slightly* duplicative of `Promise.all`, but the engine could better statically allocate promise resolution.
-    - `Promise.all` will remain more predictable performance-wise for truly variadic allocations.
+    - `Promise.all` will still remain better for awaiting dynamically-sized lists of promises.
 
 - `Iterable.prototype[Symbol.combine]`: Works similarly to `Array.prototype[Symbol.combine]`, but returns an iterable instead.
     - This is surprisingly harder than you'd expect to implement in userland while retaining `for ... of`-like semantics.

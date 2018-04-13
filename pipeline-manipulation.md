@@ -7,7 +7,7 @@ Sometimes, you want to manipulate the contents of a pipeline. There exist method
 This requires a new primitive like `Symbol.chain` for invoking a callback and returning based on its result. The callback returns one of three types (a `TypeError` is thrown otherwise):
 
 - A value with a `Symbol.chain` and/or `Symbol.asyncChain` method, to unwrap
-- An iterable of zero or more values to wrap (most commonly an array)
+- An array of zero or more values to wrap
 - `null`/`undefined` as a cue to break and/or unsubscribe.
 
 These desugar to a `Symbol.chain` call, and exist to allow expressing complex logic without sacrificing conciseness or becoming too complex to use in of themselves. There are three variants:
@@ -166,7 +166,6 @@ function invokeChainSync(coll, func) {
         if (result == null) { func = void 0; return }
         if (Array.isArray(result)) return result
         if (typeof result[Symbol.chain] === "function") return result
-        if (typeof result[Symbol.iterator] === "function") return Array.from(result)
         throw new TypeError()
     })
 }
@@ -179,7 +178,6 @@ function invokeChainAsync(coll, func) {
         if (result == null) { func = void 0; count = 0; return }
         if (Array.isArray(result)) return result
         if (typeof result[Symbol.chain] === "function") return result
-        if (typeof result[Symbol.iterator] === "function") return Array.from(result)
         throw new TypeError()
     }
 

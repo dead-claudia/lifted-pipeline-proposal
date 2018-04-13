@@ -17,15 +17,15 @@ Unlike the other two, this one involves only new built-in functions, with no new
 
 Here's how it'd be implemented for some builtins:
 
-- `Array.prototype[Symbol.combine]`: Iterates over every combination of the two arrays, like the JS equivalent of Python's `def combine(self, other, func): [func(x, y) for x in self for y in other]`.
-    - Note: this returns a flattened array (like the Python example), not a nested array.
+- `Array.prototype[Symbol.combine]`: Zip the two arrays, optionally with a callback.
+    - This is basically [Lodash's `_.zip_with`](https://lodash.com/docs#zipWith).
+    - Yes, this could instead iterate combinations like in Python's `[func(x, y) for x in self for y in other]`, but it's not as broadly useful (especially in JS), and you can't do that with generic iterables. (You could already emulate that via `as.map(a => bs.map(b => f(a, b)))`.)
 
 - `Promise.prototype[Symbol.combine]`: Joins two promises and calls the function when both promises resolve, returning a new promise with the function's result.
     - This is *slightly* duplicative of `Promise.all`, but the engine could better statically allocate promise resolution.
     - `Promise.all` will remain more predictable performance-wise for truly variadic allocations.
 
 - `Iterable.prototype[Symbol.combine]`: Works similarly to `Array.prototype[Symbol.combine]`, but returns an iterable instead.
-    - Note: this has to first convert the second iterable to a list before iterating `this`, since iterators are usually *not* restartable.
 
 - You could implement `Function.prototype[Symbol.combine]` to return `(a, b) => func(this(a), other(b))`, but it's not generally very useful (even in the world of Haskell).
 

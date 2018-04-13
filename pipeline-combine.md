@@ -1,6 +1,6 @@
 # Pipeline combining
 
-*If you want the theory, this is roughly modeled on applicative functors, with a few pragmatic functional differences.*
+*If you want the theory, this is roughly modeled on [applicative functors](https://en.wikipedia.org/wiki/Applicative_functor), with a few pragmatic functional differences.*
 
 Sometimes, you want to lift across multiple values at once, combining them as you go. This might take the form of combining [streams](https://github.com/paldepind/flyd#flydcombinebody-dependencies)/[observables](http://reactivex.io/rxjs/class/es6/Observable.js~Observable.html#instance-method-combineLatest), [joining promises](http://bluebirdjs.com/docs/api/promise.join.html), [combining lists](https://docs.python.org/3/tutorial/datastructures.html#list-comprehensions), or many others. That's where this proposal comes in.
 

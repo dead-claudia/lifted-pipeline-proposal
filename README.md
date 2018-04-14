@@ -109,67 +109,138 @@ Observable.of(".close1", ".close2", ".close3")
 })
 ```
 
-Problem is, there's this massive boilerplate, complexity, and jQuery-like tendencies inherent with [nearly](http://reactivex.io/rxjs/manual/overview.html) [every](https://baconjs.github.io/api2.html) [reactive](http://highlandjs.org/) [library](https://github.com/cujojs/most) [out](https://github.com/pozadi/kefir) [there](http://staltz.github.io/xstream/). RxJS has attempted to compromise with a `.do(func)`/`.let(func)` that's the moral equivalent of a [`|>` operator](https://github.com/tc39/proposal-pipeline-operator/), but even then, using custom operators doesn't feel as natural as built-in ones. (jQuery and Underscore/Lodash have similar issues here, especially jQuery.) Using this proposal (all three parts) + the pipeline operator proposal + the [observable proposal](https://github.com/tc39/proposal-observable), this could turn out a bit easier and lighter (slightly longer than with the RxJS magic, but *fully* zero-dependency mod polyfills/transpiling):
+Problem is, there's this massive boilerplate, complexity, and jQuery-like tendencies inherent with [nearly](http://reactivex.io/rxjs/manual/overview.html) [every](https://baconjs.github.io/api2.html) [reactive](http://highlandjs.org/) [library](https://github.com/cujojs/most) [out](https://github.com/pozadi/kefir) [there](http://staltz.github.io/xstream/). RxJS has attempted to compromise with a `.do(func)`/`.let(func)` that's the moral equivalent of a [`|>` operator](https://github.com/tc39/proposal-pipeline-operator/), but even then, using custom operators doesn't feel as natural as built-in ones. (jQuery and Underscore/Lodash have similar issues here, especially jQuery.) Using this proposal (all three parts) + the pipeline operator proposal + the [observable proposal](https://github.com/tc39/proposal-observable), this could turn out a bit easier and lighter (not much longer than [with all the RxJS magic](https://github.com/isiahmeadows/non-linear-proposal/blob/master/examples/comparison/rxjs-click.js), but *fully* zero-dependency mod polyfills/transpiling as necessary):
 
 ```js
+// This proposal (35 SLoC)
 function randInt(range) {
     return Math.random() * range | 0
-}
-
-function fromPromise(p) {
-    return new Observable(observer => {
-        p.then(v => observer.next(v), e => observer.error(e))
-    })
 }
 
 function eachEvent(elem, event) {
     return new Observable(observer => {
         const listener = e => observer.next(e)
-        const close = () => elem.removeEventListener(event, listener, false)
         elem.addEventListener(event, listener, false)
-        try { observer.next() } catch (e) { close(); throw e }
-        return close
+        observer.next()
+        return () => elem.removeEventListener(event, listener, false)
     })
-}
-
-function showSuggestion(elem, suggestion) {
-    // show the selector's suggestion DOM element and render the data
-}
-
-function hideSuggestion(elem) {
-    // hide the selector's suggestion DOM element
 }
 
 const refreshElem = document.querySelector(".refresh")
 const refreshClickStream = fromEvent(refreshElem, "click")
+const listUsers = (async () => refreshClickStream
+    :> `https://api.github.com/users?since=${randInt(500)}`
+    :> await () => window.fetch(url)
+    :> await async response => response.json()
+    :> listUsers => listUsers[randInt(listUsers.length)])
+)()
 
-for (const selector of [".close1", ".close2", ".close3"]) {
+Observable.of([".close1", ".close2", ".close3"])
+:> selector => document.querySelector(selector)
+>:> (async elem => Object.combine(
+    refreshClickStream :> () => ({elem})
+    Object.combine(
+        fromEvent(baseElem, "click"), await listUsers,
+        (_, suggestion) => ({elem, suggestion})
+    )
+}))
+|> o => o.subscribe({elem, suggestion}) => {
+    if (suggestion != null) {
+        // show the selector's suggestion DOM element and render the data
+    } else {
+        // hide the selector's suggestion DOM element
+    }
+})
+```
+
+For comparison, here's the RxJS and callback equivalents:
+
+```js
+// RxJS (29 SLoC + dependency)
+import {Observable} from "rxjs"
+
+function randInt(range) {
+    return Math.random() * range | 0
+}
+
+function getSuggestions(selector) {
+    const refreshElem = document.querySelector(".refresh")
     const baseElem = document.querySelector(selector)
 
-    refreshClickStream.forEach(() => {
-        hideSuggestion(elem)
-    })
+    const refreshClickStream = Rx.Observable.fromEvent(refreshElem, "click")
 
-    Object.combine(
-        fromEvent(baseElem, "click"),
-        refreshClickStream
-        >:> await async url =>
-            (await window.fetch(`https://api.github.com/users?since=${randInt(500)}`)).json()
-        )
-        :> () => listUsers[randInt(listUsers.length)]),
-        (_, listUsers) => listUsers
-    )
-    .forEach(suggestion => {
+    const responseStream = refreshClickStream.startWith()
+        .map(() => `https://api.github.com/users?since=${randInt(500)}`)
+        .flatMap(url => Rx.Observable.fromPromise(
+            window.fetch(url).then(response => response.json())
+        ))
+        .map(listUsers => listUsers[randInt(listUsers.length)])
+
+    return Rx.Observable.fromEvent(baseElem, "click")
+    .startWith(undefined)
+    .combineLatest(responseStream, (_, listUsers) => listUsers)
+    .merge(refreshClickStream.map(() => undefined).startWith(undefined))
+    .map(suggestion => ({selector, suggestion}))
+}
+
+Rx.Observable.of(".close1", ".close2", ".close3")
+.flatMap(selector => getSuggestions(selector))
+.subscribe(({selector, suggestion}) => {
+    if (suggestion == null) {
+        // hide the selector's suggestion DOM element
+    } else {
         // show the selector's suggestion DOM element and render the data
+    }
+})
+
+// Callbacks (31 SLoC)
+function randInt(range) {
+    return Math.random() * range | 0
+}
+
+const refresh = document.querySelector(".refresh")
+
+function getSuggestions(selector, send) {
+    const elem = document.querySelector(selector)
+    send(elem, undefined)
+
+    async function getUsers() {
+        const url = `https://api.github.com/users?since=${randInt(500)}`
+        const response = await window.fetch(url)
+        const listUsers = await response.json()
+        return listUsers[randInt(listUsers.length)]
+    }
+
+    let current = await getUsers()
+    send(elem, current)
+
+    refresh.addEventListener("click", () {
+        current = undefined
+        send(elem, undefined)
+        send(elem, current = await getUsers())
+    }, false)
+
+    elem.addEventListener("click", () => send(elem, current), false)
+}
+
+for (const selector of [".close1", ".close2", ".close3"]) {
+    getSuggestions(selector, (elem, suggestion) => {
+        if (suggestion != null) {
+            // show the first suggestion DOM element and render the data
+        } else {
+            // hide the first suggestion DOM element
+        }
     })
 }
 ```
 
-Of course, partial userland solutions have existed for a while for several of these issues (for [observables](https://github.com/jhusain/observable-spec) + [variant](https://github.com/staltz/fantasy-observable), [many basic data structures](https://github.com/fantasyland/fantasy-land), [thenables](https://github.com/promises-aplus/promises-spec), [iterables](https://tc39.github.io/ecma262/#sec-iterable-interface) + [async variant](https://tc39.github.io/ecma262/#sec-asynciterable-interface)), but this is an attempt to unify most of these under a single umbrella in a way that *feels* like JS. Furthermore, even though it *is* possible to implement this in userland, it's not ideal:
+Of course, partial userland solutions have existed for a while for several of these issues with compatibility and extensibility (for [observables](https://github.com/jhusain/observable-spec) + [variant](https://github.com/staltz/fantasy-observable), [many basic data structures](https://github.com/fantasyland/fantasy-land), [thenables](https://github.com/promises-aplus/promises-spec), [iterables](https://tc39.github.io/ecma262/#sec-iterable-interface) + [async variant](https://tc39.github.io/ecma262/#sec-asynciterable-interface)), but this is an attempt to unify most of these under a single umbrella in a way that *feels* like JS, something that just fits right in. Furthermore, even though it *is* possible to implement this in userland, it's not ideal, hence the need for a new standard:
 
-1. Most in-language implementations of function composition involve a `.reduce` or equivalent. Engines commonly end up seeing the value as megamorphic (especially in loop form), and it ends up hitting the slow path *every single time*. A native assist would be invaluable for this.
+1. Most in-language implementations of function composition involve a `.reduce` or equivalent out of necessity since they are almost always variadic. In this scenario, engines commonly end up seeing the value as megamorphic, whether in `for` or the native `.reduce`, because there's only two independent IC feedback points, and because of this, it ends up hitting the slow path *every single time*. A native assist would be invaluable for this.
 
 2. Engines have had *so* much trouble with optimizing Array builtins in the past, and userland implementations are even slower than that. With this proposal, the intermediate values are inaccessible unless the symbols are overridden, making optimization opportunities easier.
+    - V8 only just recently managed to crack the nut of inlining array methods like `.map` and `.filter` while eliding the intermediate function allocation *and* has-property check, because they can't just naïvely do a for loop - they *also* have to skip missing properties. And given the fact loop bodies can delete elements mid-loop, they had to first provide the ability to bail out from *within* existing optimized code into a slow path *corresponding that same segment of optimized code*, which is easier said than done. (No other engine does this IIUC.)
+    - No engine AFAIK currently reuses existing intermediate arrays, although I've mentioned in an aside in [this V8 bug](https://bugs.chromium.org/p/v8/issues/detail?id=7436) that it's *possible* given the right set of ICs and static analysis checks.
     - In fact, for builtins (like arrays and iterables), it can frequently just merge two pipeline chains into a single callback internally. This is part of why I designed the proposal the way I did - engines don't need massive amounts of static analysis for massive gains.
 
 3. Userland standards tend to be much better at working us into [this ugly problem](https://xkcd.com/927/). We need fewer of those.
@@ -348,21 +419,24 @@ function getUserBanner(banners, user) {
     - `Symbol.iterator`: yield the underlying value if not `undefined`, then return
     - `Symbol.lift`:
         - If this' underlying value is `undefined`, return `this`.
-        - Else, call the callback, box the result, and return it.
+        - Else, call the callback with the value, box the result, and return it.
+    - `Symbol.asyncLift`:
+        - If this' underlying value is `undefined`, return `this`.
+        - Else, call the callback with the value, await and box the result, and return the promise to it.
     - `Symbol.combine`:
         - If this' or other's underlying value is `undefined`, return `this`.
-        - Else, call the callback, box the result, and return it.
+        - Else, call the callback with both values, box the result, and return it.
     - `Symbol.asyncCombine`:
         - If this' or other's underlying value is `undefined`, return `Promise.resolve(this)`.
-        - Else, call the callback, await and box the result, and return the promise to it.
+        - Else, call the callback with both values, await and box the result, and return the promise to it.
     - `Symbol.chain`:
         - If this' underlying value is `undefined`, return `this`.
-        - Else, call the callback, then:
+        - Else, call the callback with the value, then:
             - If the result is a boxed value, return it directly.
             - Else, box the result and then return it.
     - `Symbol.asyncChain`:
         - If this' underlying value is `undefined`, return `Promise.resolve(this)`.
-        - Else, call the callback, await the result, then:
+        - Else, call the callback with the value, await the result, then:
             - If the result is a boxed value, return a promise to it directly.
             - Else, box the result and then return a promise to it.
 

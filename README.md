@@ -5,7 +5,7 @@
 1. [Introduction](#introduction-)
 1. [Pipeline lifting](#pipeline-lifting---)
 1. [Pipeline combining](#pipeline-combining---)
-1. [Pipeline manipulation](#pipeline-manipulation---)
+1. [Pipeline chaining](#pipeline-chaining---)
 1. [Why operators, not functions?](#why-operators-not-functions-)
 1. [Why this? We already have `.map`/`.filter`/etc...](#why-this-we-already-have-mapfilteretc-)
 1. [Possible expansions](#possible-expansions-)
@@ -20,7 +20,7 @@
 
 1. [Pipeline lifting](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-lift.md) for simple `.map`/`.then`-like stuff, using `coll :> func` + `@@lift`.
 1. [Pipeline combining](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-combine.md) for simple `.merge`/`.combine`-like stuff, using `Object.combine(...colls, func)` + `@@combine`.
-1. [Pipeline manipulation](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-manipulation.md) for things like `.filter`/`.takeWhile`/`.flatten`, using `coll >:> func` + `@@chain`.
+1. [Pipeline chaining](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-chain.md) for things like `.filter`/`.takeWhile`/`.flatten`, using `coll >:> func` + `@@chain`.
 1. Async variants exist for each, via `coll :> async func`/`Object.asyncCombine`/`coll >:> async func`, with matching `@@async{Lift,Combine,Chain}` symbols for each.
 1. `coll :> await func` &harr; `await (coll :> async func)`, `coll >:> await func` &harr; `await (coll >:> async func)`.
 
@@ -45,7 +45,7 @@ The proposal is in three parts:
     - For [observables](https://github.com/tc39/proposal-observable), this is like [RxJS's `Observable.combineLatest`](http://reactivex.io/rxjs/class/es6/Observable.js~Observable.html#static-method-combineLatest)
     - Although the builtin is variadic, the symbol hook is not.
 
-1. [Pipeline manipulation:](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-manipulation.md)
+1. [Pipeline chaining:](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-chain.md)
 
     - New operator `coll >:> func`, which calls `coll[Symbol.chain](func)`
     - New symbol `@@chain` to control the above.
@@ -349,7 +349,7 @@ Object.asyncCombine(...args, (...values) => ...)
 
 These are pretty straightforward, and their comments explain the gist of what they do. If you want more details about this proposal, or just want to read a little deeper into what the implementation might look like, [take a look here](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-combine.md).
 
-## Pipeline manipulation ([▲](#lifted-pipeline-proposal) | [▶](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-manipulation.md))
+## Pipeline chaining ([▲](#lifted-pipeline-proposal) | [▶](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-chain.md))
 
 Of course, mapping and combining things is nice, but they're weak sauce. They do nothing to go "no more", and they offer no facility to go "nope, not passing that along". They also don't let you go "hey, add this into the mix, too". `.map` isn't enough; you want *more*. You want to not simply *combine*, but also *flatten*, but also *filter*. That's where this comes in.
 
@@ -390,7 +390,7 @@ function takeWhile(cond) {
 }
 ```
 
-This isn't the only one, [there's several other helpers that become trivial to write](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-manipulation.md#use-cases), which may change how you find yourself manipulating collections in some cases.
+This isn't the only one, [there's several other helpers that become trivial to write](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-chain.md#use-cases), which may change how you find yourself manipulating collections in some cases.
 
 Also, there is an async variant that awaits both the result and its callbacks before resolving, coming in two flavors: `x >:> async func` (returns promise) and `x >:> await func` (for `async`/`await`, awaits result). This variant is itself non-trivial, not because the basic common functionality is complex, but due to various edge cases, and it's the only non-trivial facet of this entire proposal.
 

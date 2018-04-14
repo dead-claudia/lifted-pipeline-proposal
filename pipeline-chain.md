@@ -1,4 +1,4 @@
-# Pipeline manipulation
+# Pipeline chaining
 
 *If you want the theory, this is roughly and loosely modeled on [monads](https://en.wikipedia.org/wiki/Monad_(functional_programming)) and [Fantasy Land filterables](https://github.com/fantasyland/fantasy-land#filterable), with a few pragmatic functional differences and additions.*
 

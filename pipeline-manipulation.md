@@ -147,42 +147,84 @@ async function everyAsync(coll, func) {
 
 ## Helpers
 
-The helpers themselves are not too complicated, but they do have things they have to account for, leading to what looks like redundant code:
+The helpers themselves are not too complicated, but they do have things they have to account for, leading to what looks like redundant code, and some borderline non-trivial work:
 
 - One callback in the async variant might resolve and break while others are still being awaited (hence the need to check `func === void 0` after calling it).
-- One callback might call something on the argument, which triggers a recursive call (hence the need to guard `func` in recursive calls).
-- Callbacks in the async variant may be called in sequence before they all have a chance to resolve (hence the need to await *after* unlocking).
+- One callback (or even testing the result for `Symbol.chain`/`Symbol.iterator`/`.then`) might call something on the argument, which triggers a recursive call (hence the need to guard `func` in recursive calls).
+- Callbacks in the async variant may be called in sequence before they all have a chance to resolve (hence the need to unlock *before* awaiting).
 - If cancellation support is added, we'd also have to manage that.
 
 ```js
 function invokeChainSync(coll, func) {
-    if (typeof func !== "function") throw new TypeError()
-    return coll[Symbol.chain](x => {
-        const f = func
-        if (f === void 0) throw new ReferenceError()
-        func = void 0
-        let result
-        try { result = f(x) } finally { func = f }
-        if (result == null) { func = void 0; return }
+    if (typeof func !== "function") throw new TypeError("callback must be a function")
+    var state = "open"
+    return coll[Symbol.chain](function (x) {
+        if (state === "locked") throw new ReferenceError("Recursive calls not allowed!")
+        if (state === "closed") throw new ReferenceError("Chain already closed!")
+        try { var result = func(x) } catch (e) { state = "open"; throw e }
+        if (result == null) { state = "closed"; func = void 0; return void 0 }
+        state = "open"
         if (Array.isArray(result)) return result
-        if (typeof result[Symbol.chain] === "function") return result
-        throw new TypeError()
+        
+        try {
+            state = "locked"
+            if (typeof result[Symbol.chain] === "function") return result
+            throw new TypeError("Invalid type for result")
+        } finally {
+            state = "open"
+        }
     })
 }
 
-async function invokeChainAsync(coll, func) {
-    if (typeof func !== "function") throw new TypeError()
-    return coll[Symbol.asyncChain](async x => {
-        const f = func
-        if (f === void 0) throw new ReferenceError()
-        func = void 0
-        let result
-        try { result = f(x) } finally { func = f }
-        result = await result
-        if (result == null) { func = void 0; return }
+function invokeChainAsync(coll, func) {
+    function asyncNext(result) {
+        if (state === "closed") return void 0
+        if (result == null) { state = "closed"; func = void 0; return void 0 }
         if (Array.isArray(result)) return result
-        if (typeof result[Symbol.chain] === "function") return result
-        throw new TypeError()
-    })
+        try {
+            state = "locked"
+            if (typeof result[Symbol.chain] === "function") return result
+            throw new TypeError("Invalid type for result")
+        } finally {
+            state = "open"
+        }
+    }
+    if (typeof func !== "function") return Promise.reject(new TypeError("callback must be a function"))
+    try {
+        var state = "open"
+        return Promise.resolve(coll[Symbol.asyncChain](function (x) {
+            if (state === "locked") return Promise.reject(new ReferenceError("Recursive calls not allowed!"))
+            if (state === "closed") return Promise.reject(new ReferenceError("Chain already closed!"))
+            try {
+                state = "locked"
+                return Promise.resolve(func(x)).then(asyncNext)
+            } catch (e) {
+                return Promise.reject(e)
+            } finally {
+                state = "open"
+            }
+        }))
+    } catch (e) {
+        return Promise.reject(e)
+    }
 }
 ```
+
+In case you're concerned about the size, the two helpers bundled by themselves racks up a whopping 0.4K min+gzip, but that cost will come down when bundled with your app (and [this is worst case - I've seen the addition of code *reduce* gzip'd size](https://github.com/MithrilJS/mithril.js/issues/2095#issuecomment-373222642)). This might seem like a lot for a language feature, but it's not as much as you might think:
+
+- My own personal contact form [has more JS than this](https://github.com/isiahmeadows/website/blob/master/src/contact.js), having about 2.0K bytes minified, 1.5K min+gzip with headers and everything. And that literally only does custom validation messaging and AJAX form submission.
+
+- If you have ever used `for ... of` with Babel, this is absolute child's play - Regenerator is about 6.2K minified, 2.3 K min+gzip for its runtime alone, and a simple Babelified `flatMap` (defined below) with the `es2015` preset compiles to almost that much code (about 0.8K minified pre-gzip, 0.4K min+gzip).
+
+    ```js
+    function *flatMap(iter, func) {
+        for (const item of iter) {
+            const result = func(item)
+            if (result != null && typeof result[Symbol.iterator] === "function") {
+                yield* result
+            } else {
+                yield result
+            }
+        }
+    }
+    ```

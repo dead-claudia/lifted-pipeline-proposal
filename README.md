@@ -1,18 +1,69 @@
 # Lifted Pipeline Proposal
 
+1. [TL;DR: Just cut to the chase - I don't have time for a long explanation](#tldr-just-cut-to-the-chase--i-dont-have-time-for-a-long-explanation-)
+    - [If you have a little more time...](#if-you-have-a-little-more-time-)
 1. [Introduction](#introduction-)
-2. [Pipeline lifting](#pipeline-lifting---)
-3. [Pipeline combining](#pipeline-combining---)
-4. [Pipeline manipulation](#pipeline-manipulation---)
-5. [Why operators, not functions?](#why-operators-not-functions-)
-5. [Why this? We already have `.map`/`.filter`/etc...](#why-this-we-already-have-mapfilteretc-)
-6. [Possible expansions](#possible-expansions-)
+1. [Pipeline lifting](#pipeline-lifting---)
+1. [Pipeline combining](#pipeline-combining---)
+1. [Pipeline manipulation](#pipeline-manipulation---)
+1. [Why operators, not functions?](#why-operators-not-functions-)
+1. [Why this? We already have `.map`/`.filter`/etc...](#why-this-we-already-have-mapfilteretc-)
+1. [Possible expansions](#possible-expansions-)
     - [`Object.box(value)`](#objectboxvalue-)
     - [Cancellation proxying](#cancellation-proxying-)
-7. [Inspiration](#inspiration-)
-8. [Related strawmen/proposals](#related-strawmenproposals-)
+1. [Inspiration](#inspiration-)
+1. [Related strawmen/proposals](#related-strawmenproposals-)
 
 -----
+
+## TL;DR: Just cut to the chase - I don't have time for a long explanation ([▲](#lifted-pipeline-proposal))
+
+1. Pipeline lifting for simple `.map`/`.then`-like stuff, using `coll :> func` + `@@lift`.
+1. Pipeline combining for simple `.merge`/`.combine`-like stuff, using `Object.combine(...colls, func)` + `@@combine`.
+1. Pipeline chaining for things like `.filter`/`.takeWhile`/`.flatten`, using `coll >:> func` + `@@chain`.
+1. Async variants exist for each, via `coll :> async func`/`Object.asyncCombine`/`coll >:> async func`, with matching `@@async{Lift,Combine,Chain}` symbols for each.
+1. `coll :> await func` &harr; `await (coll :> async func)`, `coll >:> await func` &harr; `await (coll >:> async func)`.
+
+### If you have a little more time... ([▲](#tldr-just-cut-to-the-chase--i-dont-have-time-for-a-long-explanation-))
+
+The proposal is in three parts:
+
+1. Pipeline lifting:
+
+    - New operator `coll :> func`, which calls `coll[Symbol.lift](func)`.
+    - New symbol `@@lift` to control the above.
+    - For arrays, this is like `.map`.
+    - For promises, this is like `.then`.
+    - For functions, this is like composition.
+
+1. Pipeline combining:
+
+    - New builtin `Object.combine(...colls, func)` which delegates to `coll[Symbol.combine](other, func)`
+    - New symbol `@@combine` to control the above.
+    - For arrays, this is like [Lodash's `_.zip`](https://lodash.com/docs#zip).
+    - For promises, this is like [Bluebird's `Promise.join`](http://bluebirdjs.com/docs/api/promise.join.html).
+    - For [observables](https://github.com/tc39/proposal-observable), this is like [RxJS's `Observable.combineLatest`](http://reactivex.io/rxjs/class/es6/Observable.js~Observable.html#static-method-combineLatest)
+    - Although the builtin is variadic, the symbol hook is not.
+
+1. Pipeline chaining:
+
+    - New operator `coll >:> func`, which calls `coll[Symbol.chain](func)`
+    - New symbol `@@chain` to control the above.
+    - For arrays, this is like [`.flatMap`](https://github.com/tc39/proposal-flatMap) crossed with `.filter` and [Lodash's `_.takeWhile`](https://lodash.com/docs#takeWhile).
+    - For promises, this is like `.then`.
+    - For [observables](https://github.com/tc39/proposal-observable), this is like [RxJS's `.mergeAll()`](http://reactivex.io/rxjs/class/es6/Observable.js~Observable.html#instance-method-mergeAll) crossed with [`.filter`](http://reactivex.io/rxjs/class/es6/Observable.js~Observable.html#instance-method-filter) and [`.takeWhile`](http://reactivex.io/rxjs/class/es6/Observable.js~Observable.html#instance-method-takeWhile).
+
+Async variants exist for each:
+
+- `coll :> async func` calls `Symbol.asyncLift` instead of `Symbol.lift`.
+- `Object.asyncCombine` calls `Symbol.asyncCombine` instead of `Symbol.combine`.
+- `coll >:> async func` calls `Symbol.asyncChain` instead of `Symbol.chain`.
+- Each of these wrap their callback to return a promise unconditionally, and they all themselves return a promise to the result.
+
+The two operator variants can use `await` instead of `async` in `async` functions as sugar:
+
+- `coll :> await func` &harr; `await (coll :> async func)`.
+- `coll >:> await func` &harr; `await (coll >:> async func)`.
 
 ## Introduction ([▲](#lifted-pipeline-proposal))
 

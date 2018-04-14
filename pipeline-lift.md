@@ -94,9 +94,9 @@ These are, of course, very convenient functions to have, but it's very inefficie
 Here's what I propose:
 
 1. A new low-precedence `x :> f` left-associative infix operator for left-to-right lifted pipelines.
-1. A new well-known symbol `@@lift` that is used by those pipeline operators to dispatch based on type.
-1. An async variant `x :> async f` that calls `Symbol.asyncLift`, awaits its result, and wraps the function to an async one.
+1. An async variant `x :> async f` for pipelines with async return values and/or callbacks.
 1. An async variant `x :> await f` that is sugar for `await (x :> async f)`
+1. Two new well-known symbols `@@lift` and `@@asyncLift` that are used by those pipeline operators to dispatch based on type.
 
 The pipeline operators simply call `Symbol.lift`/`Symbol.asyncLift`:
 
@@ -112,7 +112,7 @@ async function asyncPipe(x, f) {
 }
 ```
 
-Here's how that `Symbol.lift` would be implemented for some of these types (`Symbol.asyncLift` would be nearly identical):
+Here's how that `Symbol.lift` would be implemented for some of these types (`Symbol.asyncLift` would be nearly identical for each of these):
 
 - `Function.prototype[Symbol.lift]`: binary function composition like this:
 

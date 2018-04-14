@@ -1,4 +1,4 @@
-# Lifted Pipeline Strawman
+# Lifted Pipeline Proposal
 
 1. [Introduction](#introduction-)
 2. [Pipeline lifting](#pipeline-lifting---)
@@ -14,7 +14,7 @@
 
 -----
 
-## Introduction ([▲](#lifted-pipeline-strawman))
+## Introduction ([▲](#lifted-pipeline-proposal))
 
 *[Original es-discuss thread](https://esdiscuss.org/topic/function-composition-syntax) (previously, this was specific to function composition, but I've since generalized it.)*
 
@@ -179,7 +179,7 @@ Of course, partial userland solutions have existed for a while for several of th
     - The only real "standard" for non-stream collection-like constructs that aren't necessarily iterable is with Fantasy Land, and it doesn't always pick the most efficient way of specifying the various constructs. ([Church-encoding the results over just using `{done, value}`, really?](https://github.com/fantasyland/fantasy-land#chainrec))
     - If the system is broken and impossible to fix, it's best to just throw it all away and start over.
 
-## Pipeline lifting ([▲](#lifted-pipeline-strawman) | [▶](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-lift.md))
+## Pipeline lifting ([▲](#lifted-pipeline-proposal) | [▶](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-lift.md))
 
 So, we've got several ways of transforming values within things:
 
@@ -216,7 +216,7 @@ It doesn't look like much, but it's incredibly useful and freeing with the right
 
 If you want to dig deeper into what this really does and what all it entails, [this contains more details on the proposal itself](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-lift.md).
 
-## Pipeline combining ([▲](#lifted-pipeline-strawman) | [▶](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-combine.md))
+## Pipeline combining ([▲](#lifted-pipeline-proposal) | [▶](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-combine.md))
 
 Sometimes, you might have a couple collections, promises, or whatever things you have that hold data, and you want to combine them. You want to join them. [This `.combineLatest` looks like your sweet spot](http://reactivex.io/rxjs/class/es6/Observable.js%7EObservable.html#instance-method-combineLatest). Or maybe [Bluebird's `Promise.join`](http://bluebirdjs.com/docs/api/promise.join.html) is that missing piece you were looking for. Or maybe, [you just wanted to run through a couple lists without pulling your hair out](https://lodash.com/docs#zip). That's what this is for. It takes all those nice and helpful things, and lifts them up to where the language understands it itself. Fewer nested loops, easier awaiting, and easier zipping iterables (which is harder than it looks to do correctly).
 
@@ -240,7 +240,7 @@ Object.asyncCombine(...args, (...values) => ...)
 
 These are pretty straightforward, and their comments explain the gist of what they do. If you want more details about this proposal, or just want to read a little deeper into what the implementation might look like, [take a look here](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-combine.md).
 
-## Pipeline manipulation ([▲](#lifted-pipeline-strawman) | [▶](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-manipulation.md))
+## Pipeline manipulation ([▲](#lifted-pipeline-proposal) | [▶](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-manipulation.md))
 
 Of course, mapping and combining things is nice, but they're weak sauce. They do nothing to go "no more", and they offer no facility to go "nope, not passing that along". They also don't let you go "hey, add this into the mix, too". `.map` isn't enough; you want *more*. You want to not simply *combine*, but also *flatten*, but also *filter*. That's where this comes in.
 
@@ -285,7 +285,7 @@ This isn't the only one, [there's several other helpers that become trivial to w
 
 Also, there is an async variant that awaits both the result and its callbacks before resolving, coming in two flavors: `x >:> async func` (returns promise) and `x >:> await func` (for `async`/`await`, awaits result). This variant is itself non-trivial, not because the basic common functionality is complex, but due to various edge cases, and it's the only non-trivial facet of this entire proposal.
 
-## Why operators, not functions? ([▲](#lifted-pipeline-strawman))
+## Why operators, not functions? ([▲](#lifted-pipeline-proposal))
 
 I know it's a common criticism that function composition, and even this proposal as a whole, doesn't *need* new syntax. There are in fact tradeoffs involved. But here's why I elected to go with syntax:
 
@@ -315,7 +315,7 @@ And of course, there are downfalls to using syntax to express this:
     - If you've been active or watching es-discuss for a while, you may also have had me bring up [this particular email](https://esdiscuss.org/topic/the-tragedy-of-the-common-lisp-or-why-large-languages-explode-was-revive-let-blocks) more than once. I really don't like the idea of adding substantial syntax or even new major builtins unless there are equal or greater amounts of opportunity to be gained from it. In fact, this is why I have been very cautious in how I formulated this proposal.
     - If you come from an object-oriented or procedural background and don't find yourself doing a lot of transforming on lists and/or working on data in the abstract, I can understand how this wouldn't affect you as much. This is especially true if you do mostly computationally-intensive stuff like numerical computation, games, and front-end view libraries/frameworks, where every allocation is very costly, or highly inherently stateful stuff like CRUD apps, where object-oriented programming fits your class-based domain model like a glove. (Sometimes, Rails + Backbone *is* the perfect combo for your app, since it's pretty much a giant interactive multi-user database with little else short extra little features.)
 
-## Possible expansions ([▲](#lifted-pipeline-strawman))
+## Possible expansions ([▲](#lifted-pipeline-proposal))
 
 These are just ideas; none of them really have to make it.
 
@@ -375,7 +375,7 @@ function getUserBanner(banners, user) {
 
 Depending on whether [cancellation](https://github.com/tc39/proposal-cancellation) turns out to include sugar syntax, this could hook into and integrate with that, adding an extra optional argument to all symbol hooks (like `Symbol.lift`, etc.) to allow handling cancellation (if they support it). This could allow much better cleanup in the face of cancellation, like closing sockets or aborting long polling loops.
 
-## Inspiration ([▲](#lifted-pipeline-strawman))
+## Inspiration ([▲](#lifted-pipeline-proposal))
 
 - This is very similar to Fantasy Land's [`fantasy-land/map`](https://github.com/fantasyland/fantasy-land#functor) method, although it's a little more permissive.
 - And, of course, the [pipeline operator proposal](https://github.com/tc39/proposal-pipeline-operator), in which this shares a *lot* of genes with.
@@ -389,7 +389,7 @@ Depending on whether [cancellation](https://github.com/tc39/proposal-cancellatio
     - Better promise abstraction: https://gist.github.com/isiahmeadows/2563c9dcf8b19bc2875e5cfb3d7709ad
         - TL;DR: you can still make things easy for consumers without making it so difficult for producers.
 
-## Related strawmen/proposals ([▲](#lifted-pipeline-strawman))
+## Related strawmen/proposals ([▲](#lifted-pipeline-proposal))
 
 This is most certainly *not* on its own little island - [even the introduction shows this](#introduction). Here's several other existing proposals that could potentially benefit, or in some cases, be truly amplified, from this proposal, whether via being able to integrate with this well to its benefit, enhancing and complementing this proposal itself, or just being generally useful alongside it:
 

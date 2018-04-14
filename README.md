@@ -18,9 +18,9 @@
 
 ## TL;DR: Just cut to the chase - I don't have time for a long explanation ([▲](#lifted-pipeline-proposal))
 
-1. Pipeline lifting for simple `.map`/`.then`-like stuff, using `coll :> func` + `@@lift`.
-1. Pipeline combining for simple `.merge`/`.combine`-like stuff, using `Object.combine(...colls, func)` + `@@combine`.
-1. Pipeline chaining for things like `.filter`/`.takeWhile`/`.flatten`, using `coll >:> func` + `@@chain`.
+1. [Pipeline lifting](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-lift.md) for simple `.map`/`.then`-like stuff, using `coll :> func` + `@@lift`.
+1. [Pipeline combining](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-combine.md) for simple `.merge`/`.combine`-like stuff, using `Object.combine(...colls, func)` + `@@combine`.
+1. [Pipeline manipulation](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-manipulation.md) for things like `.filter`/`.takeWhile`/`.flatten`, using `coll >:> func` + `@@chain`.
 1. Async variants exist for each, via `coll :> async func`/`Object.asyncCombine`/`coll >:> async func`, with matching `@@async{Lift,Combine,Chain}` symbols for each.
 1. `coll :> await func` &harr; `await (coll :> async func)`, `coll >:> await func` &harr; `await (coll >:> async func)`.
 
@@ -28,7 +28,7 @@
 
 The proposal is in three parts:
 
-1. Pipeline lifting:
+1. [Pipeline lifting:](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-lift.md)
 
     - New operator `coll :> func`, which calls `coll[Symbol.lift](func)`.
     - New symbol `@@lift` to control the above.
@@ -36,7 +36,7 @@ The proposal is in three parts:
     - For promises, this is like `.then`.
     - For functions, this is like composition.
 
-1. Pipeline combining:
+1. [Pipeline combining:](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-combine.md)
 
     - New builtin `Object.combine(...colls, func)` which delegates to `coll[Symbol.combine](other, func)`
     - New symbol `@@combine` to control the above.
@@ -45,7 +45,7 @@ The proposal is in three parts:
     - For [observables](https://github.com/tc39/proposal-observable), this is like [RxJS's `Observable.combineLatest`](http://reactivex.io/rxjs/class/es6/Observable.js~Observable.html#static-method-combineLatest)
     - Although the builtin is variadic, the symbol hook is not.
 
-1. Pipeline chaining:
+1. [Pipeline manipulation:](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-manipulation.md)
 
     - New operator `coll >:> func`, which calls `coll[Symbol.chain](func)`
     - New symbol `@@chain` to control the above.
@@ -400,8 +400,8 @@ It's much more general and open. I wanted to seek the lowest denominator for wor
 
 - I wanted to keep it flexible and meaningful semantically.
     - Some things are easily mapped over, but not everything is meaningfully combined. A good example of this is with functions. (You *could* implement such a method for them, but it's not really useful in practice, just in theory.)
-    - Some things are easily combined, but not everything is meaningfully chained. A good example of this is with a validation object, where you either have a single value or a list of errors. (In fact, you *can't* chain this one like you can with promises - chained values can depend on previously chained results, while failed validations [don't have a result you can chain](https://stackoverflow.com/a/40540290).)
-    - Another example of something that can be combined, but not chained, is a [named, managed, observable slot](https://developer.mozilla.org/en-US/docs/Web/API/HTMLSlotElement). If you can't control it, you can't chain it without loss of information.
+    - Some things are easily combined, but not everything is meaningfully chained or even manipulated. A good example of this is with a validation object, where you either have a single value or a list of errors. (In fact, you *can't* chain this one like you can with promises - chained values can depend on previously chained results, while failed validations [don't have a result you can chain](https://stackoverflow.com/a/40540290).)
+    - Some things can be not only combined, but even filtered and finitely extended, but not flattened. One example of this is a [named, managed, observable slot](https://developer.mozilla.org/en-US/docs/Web/API/HTMLSlotElement). If you don't control it, you can't chain it without loss of information. (In this case, it'd be appropriate to just throw if you receive a non-array, non-`undefined` value.)
 
 - I wanted to decouple the object from the action, and more so, the type from the action.
     - The reason why the iterable interface is *so* attractive to implement is because people can then just use it natively in `for` loops and the like. You don't need to make assumptions about the object you have apart from that one clear interface. (If they have a weird `.forEach` or a [non-traditional `.filter`](http://api.jquery.com/filter/), you don't need to care about that.)

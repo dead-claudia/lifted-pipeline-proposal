@@ -6,7 +6,6 @@
 4. [Pipeline manipulation](#pipeline-manipulation---)
 5. [Why operators, not functions?](#why-operators-not-functions-)
 6. [Possible expansions](#possible-expansions-)
-    - [Async lifting](#async-lifting-)
     - [`Object.box(value)`](#objectboxvalue-)
     - [Cancellation proxying](#cancellation-proxying-)
 7. [Inspiration](#inspiration-)
@@ -318,10 +317,6 @@ And of course, there are downfalls to using syntax to express this:
 ## Possible expansions ([▲](#lifted-pipeline-proposal))
 
 These are just ideas; none of them really have to make it.
-
-### Async lifting ([▲](#possible-expansions-))
-
-Basically, an `async` equivalent of the corresponding `Symbol.asyncChain`/`Symbol.asyncCombine` variants of `Symbol.chain`/`Symbol.combine`, using `x :> async f`/`x :> await f`/`Symbol.asyncLift`. It's obvious in hindsight, but it's more complex to code, and I'm not sure the use case is *quite* as common as `Symbol.asyncChain`. ([Consider `x >:> async f` + `Symbol.asyncChain` and its non-trivial helper, for example](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-manipulation.md#helpers)).
 
 ### `Object.box(value)` ([▲](#possible-expansions-))
 

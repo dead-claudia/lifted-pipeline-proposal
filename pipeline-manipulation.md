@@ -14,7 +14,6 @@ These desugar to a `Symbol.chain` call, and exist to allow expressing complex lo
 
 - `coll >:> func` - This does a simple sync chain via `Symbol.chain`, returning the chained value. It may be used anywhere.
 - `coll >:> async func` - This does an async chain via `Symbol.asyncChain`, returning a promise to the chained result. It may be used anywhere.
-    - The promise is resolved after not only the `Symbol.chain` call is resolved, but also all the calls within the `Symbol.chain`.
 - `coll >:> await func` - This does an async chain, awaiting for and returning the chained result. It may be used only in `async` functions, and is sugar for `await (coll >:> async func)`.
 
 The desugaring is pretty straightforward, but they require some runtime helpers:
@@ -148,13 +147,12 @@ async function everyAsync(coll, func) {
 
 ## Helpers
 
-The helpers themselves are probably the most complex part of this. The sync chain helper is pretty straightforward, only needing to guard against subsequent calls after breaking, but the async chain helper has a few additional edge cases to deal with:
+The helpers themselves are not too complicated, but they do have things they have to account for, leading to what looks like redundant code:
 
-- The `Symbol.asyncChain` call might resolve before all the callback calls do.
-- There might be multiple callback calls needing awaited in parallel.
-- One callback might resolve and break while others are still being awaited.
-    - Once cancellation exists, we'd also have to cancel the remaining callbacks.
-- The callback might be called after the `Symbol.asyncChain` call resolves, but before all the existing callback calls resolve.
+- One callback in the async variant might resolve and break while others are still being awaited (hence the need to check `func === void 0` after calling it).
+- One callback might call something on the argument, which triggers a recursive call (hence the need to guard `func` in recursive calls).
+- Callbacks in the async variant may be called in sequence before they all have a chance to resolve (hence the need to await *after* unlocking).
+- If cancellation support is added, we'd also have to manage that.
 
 ```js
 function invokeChainSync(coll, func) {
@@ -162,7 +160,9 @@ function invokeChainSync(coll, func) {
     return coll[Symbol.chain](x => {
         const f = func
         if (f === void 0) throw new ReferenceError()
-        const result = f(x)
+        func = void 0
+        let result
+        try { result = f(x) } finally { func = f }
         if (result == null) { func = void 0; return }
         if (Array.isArray(result)) return result
         if (typeof result[Symbol.chain] === "function") return result
@@ -170,61 +170,19 @@ function invokeChainSync(coll, func) {
     })
 }
 
-function invokeChainAsync(coll, func) {
-    function awaitNext(result) {
-        if (count === 0 || --count === 0) { resolve(); resolve = void 0 }
-        // Unlikely, but we still need to account for it.
-        if (func === void 0) return
-        if (result == null) { func = void 0; count = 0; return }
+async function invokeChainAsync(coll, func) {
+    if (typeof func !== "function") throw new TypeError()
+    return coll[Symbol.asyncChain](async x => {
+        const f = func
+        if (f === void 0) throw new ReferenceError()
+        func = void 0
+        let result
+        try { result = f(x) } finally { func = f }
+        result = await result
+        if (result == null) { func = void 0; return }
         if (Array.isArray(result)) return result
         if (typeof result[Symbol.chain] === "function") return result
         throw new TypeError()
-    }
-
-    function awaitError(error) {
-        if (count === 0 || --count === 0) { resolve(); resolve = void 0 }
-        throw error
-    }
-
-    function awaitEnd(result, type) {
-        if (type !== 2) func = void 0
-        if (count !== 0 && --count !== 0) {
-            return p.then(() => {
-                resolve = void 0; count = 0
-                if (type === 0) return result
-                throw result
-            })
-        } else {
-            resolve = void 0
-            if (type === 1) throw result
-            return type ? Promise.reject(result) : result
-        }
-    }
-
-    if (typeof func !== "function") return Promise.reject(new TypeError())
-    let count = 1
-    let resolve
-    const p = new Promise(r => resolve = r)
-
-    try {
-        const chained = Promise.resolve(coll[Symbol.asyncChain](x => {
-            try {
-                if (func === void 0) throw new ReferenceError()
-                const result = func(x)
-                count++
-                return Promise.resolve(result).then(awaitNext, awaitError)
-            } catch (e) {
-                return Promise.reject(e)
-            }
-        }))
-        .then(
-            result => awaitEnd(result, 0),
-            e => awaitEnd(e, 1)
-        )
-        if (count === 0 || --count === 0) { resolve(); resolve = void 0 }
-        return chained
-    } catch (e) {
-        return awaitEnd(e, 2)
-    }
+    })
 }
 ```

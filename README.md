@@ -366,6 +366,9 @@ function getUserBanner(banners, user) {
             - If the result is a boxed value, return a promise to it directly.
             - Else, box the result and then return a promise to it.
 
+- Engines could with type feedback elide the entire pipeline and generate optimal assembly (think: zero-cost abstraction in optimized code) with little effort provided ICs assert `Object.box` and the relevant symbols aren't touched.
+    - JS could use a few more zero-cost abstractions...
+
 ### Cancellation proxying ([▲](#possible-expansions-))
 
 Depending on whether [cancellation](https://github.com/tc39/proposal-cancellation) turns out to include sugar syntax, this could hook into and integrate with that, adding an extra optional argument to all symbol hooks (like `Symbol.lift`, etc.) to allow handling cancellation (if they support it). This could allow much better cleanup in the face of cancellation, like closing sockets or aborting long polling loops.

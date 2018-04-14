@@ -1,12 +1,23 @@
-[*Original es-discuss thread*](https://esdiscuss.org/topic/function-composition-syntax)
+*[Original es-discuss thread](https://esdiscuss.org/topic/function-composition-syntax) (previously, this was specific to function composition, but I've since generalized it.)*
 
 # Lifted Pipeline Strawman
 
-*Previously, was specific to function composition. I've since generalized it.*
+1. [Introduction](#introduction)
+2. [Pipeline lifting](#pipeline-lifting)
+3. [Pipeline combining](#pipeline-combining)
+4. [Pipeline manipulation](#pipeline-manipulation)
+5. [Why operators, not functions?](#why-operators-not-functions)
+6. [Possible expansions](#possible-expansions)
+7. [Inspiration](#inspiration)
+8. [Related strawmen/proposals](#related-strawmenproposals)
 
 -----
 
+## Introduction
+
 *Before I continue, if you came here wondering what the heck this is, or what the point of it is, I invite you to read [this blog post about composition](http://blog.ricardofilipe.com/post/javascript-composition-for-dummies) and [this one on monads](https://jameswestby.net/weblog/tech/why-monads-are-useful.html), and I encourage you to google both concepts. Long story short, yes, it's a thing, and yes, it's pretty useful for a variety of reasons.*
+
+*Also, note that this is meant to work as a complementary extension of the existing [pipeline operator proposal](https://github.com/tc39/proposal-pipeline-operator/). I use the F# variant here for simplicity, but there are still [multiple competing syntaxes](https://github.com/tc39/proposal-pipeline-operator/wiki).*
 
 Function composition has been used for years, even in JS applications. It's one thing people have been continually reinventing as well. Many utility belts I've found have this function – in particular, most common ones have it:
 
@@ -17,16 +28,8 @@ Function composition has been used for years, even in JS applications. It's one 
 There's also the [numerous npm modules](https://www.npmjs.com/search?q=function+composition) and manual implementations (it's trivial to write a basic implementation). Conceptually, it's pretty basic:
 
 ```js
-function composeRight(f, ...fs) {
-    return function () {
-        var result = f.apply(this, arguments);
-
-        for (var i = 0; i < fs.length; i++) {
-            result = fs[i].call(this, result);
-        }
-
-        return result;
-    }
+function compose(f, g) {
+    return (...xs) => f(g(...xs))
 }
 ```
 
@@ -45,12 +48,12 @@ function toSlug(input) {
 to this:
 
 ```js
-const toSlug = composeRight(
+const toSlug = [
     _ => _.split(" "),
     _ => _.map(str => str.toLowerCase()),
     _ => _.join("-"),
-    encodeURIComponent
-)
+    encodeURIComponent,
+].reduce(compose)
 ```
 
 Or, using this proposal:
@@ -63,187 +66,265 @@ const toSlug =
     :> encodeURIComponent
 ```
 
-Another scenario is when you just want to trivially transform a collection. `Array.prototype.map` exists already, but we can do that for maps and sets, too. This would let you turn code from this, to re-borrow a previous example:
+Another scenario is when you just want to define a long stream:
+
+```
+// RxJS Observables
+import {Observable} from "rxjs"
+
+function randInt(range) {
+    return Math.random() * range | 0
+}
+
+function getSuggestions(selector) {
+    const refreshElem = document.querySelector(".refresh")
+    const baseElem = document.querySelector(selector)
+
+    const refreshClickStream = Observable.fromEvent(refreshElem, "click")
+
+    const responseStream = refreshClickStream.startWith()
+        .map(() => `https://api.github.com/users?since=${randInt(500)}`)
+        .flatMap(url => Observable.fromPromise(
+            window.fetch(url).then(response => response.json())
+        ))
+        .map(() => listUsers[randInt(listUsers.length)])
+
+    return Observable.fromEvent(baseElem, "click")
+    .startWith(undefined)
+    .combineLatest(responseStream, (_, listUsers) => listUsers)
+    .merge(refreshClickStream.map(() => undefined).startWith(undefined))
+    .map(suggestion => ({selector, suggestion}))
+}
+
+Observable.of(".close1", ".close2", ".close3")
+.flatMap(selector => getSuggestions(selector))
+.forEach(({selector, suggestion}) => {
+    if (suggestion == null) {
+        // hide the selector's suggestion DOM element
+    } else {
+        // show the selector's suggestion DOM element and render the data
+    }
+})
+```
+
+Problem is, there's this massive boilerplate, complexity, and jQuery-like tendencies inherent with [nearly](http://reactivex.io/rxjs/manual/overview.html) [every](https://baconjs.github.io/api2.html) [reactive](http://highlandjs.org/) [library](https://github.com/cujojs/most) [out](https://github.com/pozadi/kefir) [there](http://staltz.github.io/xstream/). RxJS has attempted to compromise with a `.do(func)`/`.let(func)` that's the moral equivalent of a [`|>` operator](https://github.com/tc39/proposal-pipeline-operator/), but even then, using custom operators doesn't feel as natural as built-in ones. (jQuery and Underscore/Lodash have similar issues here, especially jQuery.) Using this proposal (all three parts) + the pipeline operator proposal + the [observable proposal](https://github.com/tc39/proposal-observable), this could turn out a bit easier and lighter (slightly longer than with the RxJS magic, but *fully* zero-dependency mod polyfills/transpiling):
 
 ```js
-function toSlug(input) {
-    return encodeURIComponent(
-        input.split(" ")
-            .map(str => str.toLowerCase())
-            .join("-")
+function randInt(range) {
+    return Math.random() * range | 0
+}
+
+function fromPromise(p) {
+    return new Observable(observer => {
+        p.then(v => observer.next(v), e => observer.error(e))
+    })
+}
+
+function eachEvent(elem, event) {
+    return new Observable(observer => {
+        const listener = e => observer.next(e)
+        const close = () => elem.removeEventListener(event, listener, false)
+        elem.addEventListener(event, listener, false)
+        try { observer.next() } catch (e) { close(); throw e }
+        return close
+    })
+}
+
+function showSuggestion(elem, suggestion) {
+    // show the selector's suggestion DOM element and render the data
+}
+
+function hideSuggestion(elem) {
+    // hide the selector's suggestion DOM element
+}
+
+const refreshElem = document.querySelector(".refresh")
+const refreshClickStream = fromEvent(refreshElem, "click")
+
+for (const selector of [".close1", ".close2", ".close3"]) {
+    const baseElem = document.querySelector(selector)
+
+    refreshClickStream.forEach(() => {
+        hideSuggestion(elem)
+    })
+
+    Object.combine(
+        fromEvent(baseElem, "click"),
+        refreshClickStream
+        >:> await async url =>
+            (await window.fetch(`https://api.github.com/users?since=${randInt(500)}`)).json()
+        )
+        :> () => listUsers[randInt(listUsers.length)]),
+        (_, listUsers) => listUsers
     )
+    .forEach(suggestion => {
+        // show the selector's suggestion DOM element and render the data
+    })
 }
 ```
 
-to something that's a little less nested (in tandem with the [pipeline operator proposal](https://github.com/tc39/proposal-pipeline-operator)):
+Of course, partial userland solutions have existed for a while for several of these issues (for [observables](https://github.com/jhusain/observable-spec) + [variant](https://github.com/staltz/fantasy-observable), [many basic data structures](https://github.com/fantasyland/fantasy-land), [thenables](https://github.com/promises-aplus/promises-spec), [iterables](https://tc39.github.io/ecma262/#sec-iterable-interface) + [async variant](https://tc39.github.io/ecma262/#sec-asynciterable-interface)), but this is an attempt to unify most of these under a single umbrella in a way that *feels* like JS. Furthermore, even though it *is* possible to implement this in userland, it's not ideal:
+
+1. Most in-language implementations of function composition involve a `.reduce` or equivalent. Engines commonly end up seeing the value as megamorphic (especially in loop form), and it ends up hitting the slow path *every single time*. A native assist would be invaluable for this.
+
+2. Engines have had *so* much trouble with optimizing Array builtins in the past, and userland implementations are even slower than that. With this proposal, the intermediate values are inaccessible unless the symbols are overridden, making optimization opportunities easier.
+    - In fact, for builtins (like arrays and iterables), it can frequently just merge two pipeline chains into a single callback internally. This is part of why I designed the proposal the way I did - engines don't need massive amounts of static analysis for massive gains.
+
+3. Userland standards tend to be much better at working us into [this ugly problem](https://xkcd.com/927/). We need fewer of those.
+    - For one, as a library writer, figuring out what the heck to implement for things that are kind of iterable-ish, but not in a way I can just implement `Symbol.iterator`, leads me to write the same exact methods about 5 times over for repeated variants.
+    - Most existing "standards" for streams are so special-cased to a single *type* of library (monadic streams) that it occludes creating another form entirely (arrow-like streams).
+    - The only real "standard" for non-stream collection-like constructs that aren't necessarily iterable is with Fantasy Land, and it doesn't always pick the most efficient way of specifying the various constructs. ([Church-encoding the results over just using `{done, value}`, really?](https://github.com/fantasyland/fantasy-land#chainrec))
+    - If the system is broken and impossible to fix, it's best to just throw it all away and start over.
+
+## Pipeline lifting
+
+[*More details*](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-lift.md)
+
+So, we've got several ways of transforming values within things:
+
+- `list.map(x => f(x))` - Transform the entries of an array.
+- `promise.then(x => f(x))` - Transform the value of a promise.
+- `observable.map(x => f(x))` - Transform the values emitted from an observable.
+- `stream.pipe(map(x => f(x)))` - Transform the values in a Node stream (where `map` is [`through2-map`](https://www.npmjs.com/package/through2-map)).
+- `func.compose(x => f(x))` - Transform the return value of a function (where `.compose` is a theoretical `Function.prototype.compose`).
+
+If you squint hard enough, they are all variations of this same theme: `object.transform(x => f(x))`. What does that bring us?
+
+- A way to generically map over something without having to care so much about what's in it.
+
+My proposal for this is to add a new syntax with an associated symbol:
 
 ```js
-function toSlug(string) {
-    return string
-    |> _ => _.split(" ")
-    :> word => word.toLowerCase()
-    |> _ => _.join("-")
-    |> encodeURIComponent
-}
-```
+// What you write:
+x :> f
 
-It's also much more readable than the previous composed pipeline:
-
-```js
-const toSlug =
-    _ => _.split(" ")
-    :> _ => _.map(str => str.toLowerCase())
-    :> _ => _.join("-")
-    :> encodeURIComponent
-```
-
-These are, of course, very convenient functions to have, but it's very inefficient to implement at the language level. Instead, if it was implemented at the engine level, you could optimize it in ways not possible at the language level:
-
-1. It's possible to create composed function pipelines which are as fast, if not faster, than standard function calls.
-
-2. Engines can trivially optimize and merge pipelines as appropriate. In the example language implementation for function composition, which is the usual optimized function implementation, `result` would be quickly marked as megamorphic, because the engine only has one point to rule them all for type feedback, not the *n* - 1 required to reliably avoid the mess. (Of course, this could be addressed by a userland `Function.compose` or whatever, but it still fails to address the general case.)
-
-3. The call sequence can be special-cased for many of these internal operations, knowing they require minimal stack manipulation and are relatively trivial to implement.
-
-## Proposed syntax/semantics
-
-Here's what I propose:
-
-1. A new low-precedence `x :> f` left-associative infix operator for left-to-right lifted pipelines.
-1. A new low-precedence `f <: x` right-associative infix operator for right-to-left lifted pipelines.
-1. A new well-known symbol `@@lift` that is used by those pipeline operators to dispatch based on type.
-
-The pipeline operators simply call `Symbol.lift`:
-
-```js
+// What it does:
 function pipe(x, f) {
     if (typeof func !== "function") throw new TypeError()
     return x[Symbol.lift](x => f(x))
 }
 ```
 
-Here's how that `Symbol.lift` would be implemented for some of these types:
+It doesn't look like much, but it's incredibly useful and freeing with the right method implementations.
 
-- `Function.prototype[Symbol.lift]`: binary function composition like this:
+- Want to get all the `name`s out of an array of records? Use `array :> r => r.name`.
+- Want to get a stream of input values from an event stream? Use `stream :> e => e.target.value`.
+- Is the function returning an object you only want the `contents` of? Use `func :> r => r.contents`.
+- Want to shoehorn a function that takes a `value` and make it take events instead? Use `e => e.target.value :> setValue`.
+- Have a `Set` of numbers and strings, and you only want numbers? Use `set :> Number`
 
-    ```js
-    Function.prototype[Symbol.lift] = function (g) {
-        const f = this
-        // Note: this should only be callable.
-        return function (...args) {
-            return g.call(this, f.call(this, ...args))
-        }
-    }
-    ```
+If you want to dig deeper into what this really does and what all it entails, [this contains more details on the proposal itself](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-lift.md).
 
-- `Array.prototype[Symbol.lift]`: Equivalent to literally this, mod extra type checking, the method's name, and the method itself being only callable:
+## Pipeline combining
 
-    ```js
-    Array.prototype[Symbol.lift] = function (func) {
-        const array = Object(this)
-        const length = array.length
-        const result = new Array(length)
+Sometimes, you might have a couple collections, promises, or whatever things you have that hold data, and you want to combine them. You want to join them. [This `.combineLatest` looks like your sweet spot](http://reactivex.io/rxjs/class/es6/Observable.js%7EObservable.html#instance-method-combineLatest). Or maybe [Bluebird's `Promise.join`](http://bluebirdjs.com/docs/api/promise.join.html) is that missing piece you were looking for. Or maybe, [you just wanted to run through a couple lists without pulling your hair out](https://lodash.com/docs#zip). That's what this is for. It takes all those nice and helpful things, and lifts them up to where the language understands it itself. Fewer nested loops, easier awaiting, and easier zipping iterables (which is harder than it looks to do correctly).
 
-        for (let i = 0; i < length; i++) {
-            result[i] = func(array[i], i)
-        }
+When you squint hard enough, these start to run together, and it's why I have this:
 
-        return result
-    }
-    ```
+- `_.zipWith(array, other, (a, b) => ...)` - [Lodash's `_.zipWith`](https://lodash.com/docs#zipWith)
+- `observable.zip(other, (a, b) => ...)` - [RxJS's `_.zip`](http://reactivex.io/rxjs/class/es6/Observable.js~Observable.html#static-method-zip)
+- `Observable.combineLatest(observable, other, (a, b) => ...)` - [RxJS's `Observable.combineLatest`](http://reactivex.io/rxjs/class/es6/Observable.js~Observable.html#static-method-combineLatest)
+- `Promise.join(a, b, (a, b) => ...)` - [Bluebird's `Promise.join`](http://bluebirdjs.com/docs/api/promise.join.html)
 
-    The reason this is done is to avoid the existing issues with sparse arrays being harder to optimize and so the code gen is trivial.
+My proposal is to add a couple new builtins with related symbols:
 
-- `Promise.prototype[Symbol.lift]`: Equivalent to `Promise.prototype.then`, if passed only one argument.
+```js
+// Combines each of `...args` using their related `Symbol.combine` method
+Object.combine(...args, (...values) => ...)
 
-- `Generator.prototype[Symbol.lift]`: Returns an iterable that does this:
+// Combines each of `...args` using their related `Symbol.asyncCombine` method,
+// returning a promise resolved with the return value
+Object.asyncCombine(...args, (...values) => ...)
+```
 
-    ```js
-    Generator.prototype[Symbol.lift] = function (func) {
-        const remap = ({done, value}) => ({
-            done, value: done ? value : func(value),
-        })
-        return {
-            next: v => remap(this.next(v)),
-            throw: v => remap(this.throw(v)),
-            return: v => remap(this.return(v)),
-        }
-    }
-    ```
+These are pretty straightforward, and their comments explain the gist of what they do. If you want more details about this proposal, or just want to read a little deeper into what the implementation might look like, [take a look here](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-combine.md).
 
-- `AsyncGenerator.prototype[Symbol.lift]` and `Iterable.prototype[Symbol.lift]` do similar to `Generator.prototype[Symbol.lift]`. Note that `Symbol.iterator` is not a fallback for `Symbol.lift`.
+## Pipeline manipulation
 
-- `Map.prototype[Symbol.lift]`: Map iteration/update like this:
+Of course, mapping and combining things is nice, but they're weak sauce. They do nothing to go "no more", and they offer no facility to go "nope, not passing that along". They also don't let you go "hey, add this into the mix, too". `.map` isn't enough; you want *more*. You want to not simply *combine*, but also *flatten*, but also *filter*. That's where this comes in.
 
-    ```js
-    Map.prototype[Symbol.lift] = function (func) {
-        const result = new this.constructor()
+After doing a bit of research to see what they really build off of, I managed to narrow it down to a single operation. Here's how I formulated that into a proposal:
 
-        this.forEach((key, value) => {
-            const [newKey, newValue] = func(key, value)
-            result.set(newKey, newValue)
-        })
+```js
+// What you write:
+x >:> f
 
-        return result
-    }
-    ```
+// What this does (roughly):
+function chain(x, f) {
+    if (typeof func !== "function") throw new TypeError()
+    return x[Symbol.chain](value => {
+        const result = f(value)
+        // break
+        if (result == null) return undefined
+        // emit values (optimization)
+        if (Array.isArray(result)) return result
+        // flatten value
+        if (typeof result[Symbol.chain] === "function") return result
+        throw new TypeError("invalid value")
+    })
+}
+```
 
-- `Set.prototype[Symbol.lift]`: Set iteration/update like this:
+It's not as simple and foolproof to implement as the first two, but here's how you use it:
 
-    ```js
-    Set.prototype[Symbol.lift] = function (func) {
-        const result = new this.constructor()
+- If you want to break, you return `null`/`undefined`.
+- If you want to emit raw values, you return an array of them.
+- If you want to emit values from a chained object (usually same type as the collection), you return it.
 
-        this.forEach(value => {
-            result.add(func(value))
-        })
+This helper makes it possible to filter, flatten, and truncate things generically. For example, the common `.takeWhile` you find for [collections](https://lodash.com/docs#takeWhile) and [observables](http://reactivex.io/rxjs/class/es6/Observable.js~Observable.html#instance-method-takeWhile) could be generically translated into a *very* simple helper:
 
-        return result
-    }
-    ```
+```js
+// Use like so: `coll >:> takeWhile(cond)`
+function takeWhile(cond) {
+    return x => cond(x) ? [x] : undefined
+}
+```
 
-## Why an operator, not a function?
+This isn't the only one, [there's several other helpers that become trivial to write](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-manipulation.md#use-cases), which may change how you find yourself manipulating collections in some cases.
 
-**Pros:**
+Also, there is an async variant that awaits both the result and its callbacks before resolving, coming in two flavors: `x >:> async func` (returns promise) and `x >:> await func` (for `async`/`await`, awaits result). This variant is itself non-trivial, not because the basic common functionality is complex, but due to various edge cases, and it's the only non-trivial facet of this entire proposal.
 
-(Easier to optimize, and for some, read.)
+## Why operators, not functions?
 
-1. Fewer parentheses. That is always a bonus.
-1. Engines can optimize pipelines much more easily, since it's all binary operations.
-1. Lighter polyfill + implementation.
-1. Less verbose without sacrificing readability.
+I know it's a common criticism that function composition, and even this proposal as a whole, doesn't *need* new syntax. There are in fact tradeoffs involved. But here's why I elected to go with syntax:
 
-**Cons:**
+- This is meant to mirror the pipeline operator in appearance. It's not an exact one-to-one correspondence, but I specifically want to encourage people to view it as not dissimilar to a pipeline.
 
-(Impossible to polyfill alone, looks odd to some.)
+- There's fewer parentheses and tokens in general involved, especially if the operator is lower-precedence. Instead of a pair of parentheses for each chain + commas for each call, it's a single infix token. Also, there's fewer cases of nested parentheses, something that tends to plague functional JS.
+    - I know this is subjective, but I'm not alone in viewing this as a benefit for proposals. It's also no accident that a lot of functional JS fans end up making larger use of functional composition than even Haskell users - it reduces the sheer number of nested parentheses they frequently run into.
 
-1. It's syntax that must be transpiled, not just a function that can be polyfilled.
-    - Note that the syntax is trivial to transpile - it's something you could almost do via a Recast script.
-1. The operator looks a bit foreign and/or weird.
-    - Yeah...I initially used `>=>` in the mailing list and `>:>`/`<:<` here, but I was mostly looking for an operator that a) didn't conflict with existing syntax (`f <<- g` conflicts with `f << -g`, for example), and b) indicated some sort of direction. If you have a better idea, [I'm all ears](https://github.com/isiahmeadows/function-composition-proposal/issues/1).
-1. It adds to an already-complicated language, and can still be implemented in userland.
-    - In theory, yes, and I do feel [there should be a high bar](https://esdiscuss.org/topic/the-tragedy-of-the-common-lisp-or-why-large-languages-explode-was-revive-let-blocks) for introducing new language features, but I feel this does reach that bar.
-    - The numerous modifications to builtins make it a little harder to implement trivially in userland.
+- There's less to polyfill, since you only need a statically analyzable runtime helper. The binary nature of the operators make it possible to not also have to account for a variadic application. (The `Object.combine` and `Object.asyncCombine` implementations are good examples of why this is the case.)
 
-## Why a single shared symbol?
+- Operators are in their nature less verbose than functions, and in general, this proposal aims to keep things simple without getting too verbose. It also tries to keep from becoming unreadable, and line noise is something I wish to avoid. (In fact, the proposal tries to avoid being *too* tacit, requiring you to be explicit what you do at each step.)
 
-Let's draw from a few examples:
+And of course, there are downfalls to using syntax to express this:
 
-- `f.compose(x => g(x))`: This is function composition. Call this with any value, and it'll go through both `f` and `g`, and you'll get the result. `x` here is like a "nested" value - we don't need to have it ready yet, and it's only there when we call the composed function. (Normally, you see this as `f.compose(g)`, but I un-factored that out for clarity.)
+- It's not possible to use with polyfills alone. This alone will draw people away from this proposal, because they either strongly resent transpiling in general, or they just don't want to have to add *yet another Babel plugin* just to use it. Trust me, I get the pain, too. I've written entire 50K+ SLoC projects solo targeting ES5, and I've have historically had very little need for the ES6+ syntax additions. (About the only things I've really found myself wanting are generators, arrow functions, and `async`/`await`.) And yes, transpilers are usually a pain to set up, especially Babel and TypeScript and especially with existing projects with complex build systems.
 
-- `list.map(x => func(x))`: This is your familiar `Array.prototype.map` and similar. The callback is called with each nested value, and it returns the result.
+- The operator looks a bit foreign and/or weird. I'm fully aware the operator looks pretty arcane if you're just looking at it without added context, and doesn't obviously imply any sort of substantially modified pipeline. I'm not wanting to design a Haskell or Perl extension, so if you have better ideas, [please tell me](https://github.com/isiahmeadows/lifted-pipeline-strawman/issues/1). I really want to hear it.
+    - My base requirements for the operator are that a) it doesn't conflict with existing syntax, b) it implies some sort of piping, and c) it implies some sort of obvious, clear direction.
+    - Keep in mind, I've already gone through a few ideas:
+        - `>=>` is too close to Haskell's Kleisli composition operator visually, which is equivalent to composing `Symbol.chain` callbacks to make a new such callback. (I initially proposed this in the mailing list, and it confused functional people.)
+        - `>:>` was initially used for the base pipeline operator here, but it started to look a little too Perl-like, and was a little too verbose to merit being "better" than a simple utility function.
+        - `->>` was once proposed, but the reverse conflicts with unary negation (think: `f <<- g` vs `f << -g`). It also doesn't visually imply piping, even though it does imply a direction.
+        - `>>` and `>>>` may seem incredibly obvious, but you can't use them without potentially breaking a *lot* of existing code (they are the bit-wise arithmetic and logical right shifts, respectively). `|` also falls in a similar wheelhouse as the bitwise exclusive or operator (it also happens to be a major asm.js dependency).
+    - I previously had reverse equivalents for each, but I decided against it since it's not that hard to just flip the application, and it doesn't seem to fit well with the existing base pipeline operator proposal.
 
-- `promise.then(x => func(x))`: This is your familiar `Promise.prototype.then`. The callback is called on resolution, and the result is a promise to the value returned from the function (or whatever value the returned promise eventually holds, if it returned one).
-
-These clearly rhyme: they're all in the common form of `foo.method(x => func(x))`, and this is no accident. Matter of fact, this is the basis of [Haskell's](http://learnyouahaskell.com/making-our-own-types-and-typeclasses#the-functor-typeclass) (and [Fantasy Land's](https://github.com/fantasyland/fantasy-land#functor)) `Functor` type. Although my proposal deviates from that a little bit (it makes no attempt to validate the return type, just the input), that's why I chose to use a single unifying symbol.
+- It adds to an already-complicated language, and can be fully implemented in userland without the assistance of operators. Most things that are userland-implementable don't really need to become language constructs, and very few things would actually benefit from being a core extension.
+    - If you've been active or watching es-discuss for a while, you may also have had me bring up [this particular email](https://esdiscuss.org/topic/the-tragedy-of-the-common-lisp-or-why-large-languages-explode-was-revive-let-blocks) more than once. I really don't like the idea of adding substantial syntax or even new major builtins unless there are equal or greater amounts of opportunity to be gained from it. In fact, this is why I have been very cautious in how I formulated this proposal.
+    - If you come from an object-oriented or procedural background and don't find yourself doing a lot of transforming on lists and/or working on data in the abstract, I can understand how this wouldn't affect you as much. This is especially true if you do mostly computationally-intensive stuff like numerical computation, games, and front-end view libraries/frameworks, where every allocation is very costly, or highly inherently stateful stuff like CRUD apps, where object-oriented programming fits your class-based domain model like a glove. (Sometimes, Rails + Backbone *is* the perfect combo for your app, since it's pretty much a giant interactive multi-user database with little else short extra little features.)
 
 ## Possible expansions
 
 These are just ideas; none of them really have to make it.
 
+### `x :> async f`/`x :> await f`/`Symbol.asyncLift`
+
+Basically, an `async` equivalent of the corresponding `Symbol.asyncChain`/`Symbol.asyncCombine` variants of `Symbol.chain`/`Symbol.combine`. It's obvious in hindsight, but it's more complex to code, and I'm not sure the use case is *quite* as common as `Symbol.asyncChain`. ([Consider `x >:> async f` + `Symbol.asyncChain` and its non-trivial helper, for example](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-manipulation.md#helpers)).
+
 ### `Object.box(value)`
 
-An `Object.box(value)` to provide as an escape hatch which also facilitates optional propagation. Here's an example with help from the [optional chaining proposal](https://github.com/tc39/proposal-optional-chaining):
+An `Object.box(value)` to provide as an escape hatch which also facilitates optional propagation through the various operators. Here's an example with help from the [optional chaining proposal](https://github.com/tc39/proposal-optional-chaining):
 
 ```js
 // Old
@@ -256,216 +337,75 @@ function getUserBanner(banners, user) {
 // New
 function getUserBanner(banners, user) {
     return Object.box(user?.accountDetails?.address?.province)
-        :> _ => banners[_]
+        :> p => banners[p]
 }
 ```
 
 - This gets uncomfortably verbose...
-- It *is* a little more flexible.
+    - It *is* a little more flexible and not *quite* as common, which helps offset this some.
 
-### Optional propagation operator
+- `null` values are censored to `undefined` for consistency.
+    - The DOM already just censors `undefined` to `null`, so there's nothing to account for there.
 
-Corresponding `x ?> f` and `f <? x` for optional propagation.
+- The returned object's prototype would implement the following:
+    - `.value`: get the underlying value
+    - `Symbol.iterator`: yield the underlying value if not `undefined`, then return
+    - `Symbol.lift`:
+        - If this' underlying value is `undefined`, return `this`.
+        - Else, call the callback, box the result, and return it.
+    - `Symbol.combine`:
+        - If this' or other's underlying value is `undefined`, return `this`.
+        - Else, call the callback, box the result, and return it.
+    - `Symbol.asyncCombine`:
+        - If this' or other's underlying value is `undefined`, return `Promise.resolve(this)`.
+        - Else, call the callback, await and box the result, and return the promise to it.
+    - `Symbol.chain`:
+        - If this' underlying value is `undefined`, return `this`.
+        - Else, call the callback, then:
+            - If the result is a boxed value, return it directly.
+            - Else, box the result and then return it.
+    - `Symbol.asyncChain`:
+        - If this' underlying value is `undefined`, return `Promise.resolve(this)`.
+        - Else, call the callback, await the result, then:
+            - If the result is a boxed value, return a promise to it directly.
+            - Else, box the result and then return a promise to it.
 
-- Extra syntax for such a simple case is not something I'm a huge fan of.
-    - There's already seemingly precedent in the optional chaining operators, so does this have a chance?
-- Should this really be `?|>`/`<|?` to mirror the pipeline operator?
-    - It's still kind of lifting, so... ¯\\_(ツ)_/¯
-    - Maybe `?.>`/`<.?`? (Meh...little too obscure-looking)
-- It can make for nicer code, though:
+### Cancellation proxying
 
-```js
-function getUserBanner(banners, user) {
-    return user?.accountDetails?.address?.province ?> _ => banners[_]
-}
-```
-
-### Pipeline extensions
-
-- `await` in pipelines: `x :> await f` (this would desugar to `await (x :> f)`)
-- `yield` in pipelines: `x :> yield` (this would desugar to `yield x`)
-- This is subject to [this discussion here](https://github.com/tc39/proposal-pipeline-operator/wiki), as everything there is relevant here.
-
-### Lift across N-ary functions
-
-A way to expand this further to lift across binary actions (instead of unary ones like here).
-
-- This is not simply `x :> (a, b) => ...`, but a ternary operation like `x.lift2(y, (a, b) => ...)`
-- This could allow something like summing the values of two promises without much effort: `Promise.resolve(1).lift2(Promise.resolve(2), (a, b) => a + b)`
-- This is similar to [Fantasy Land's `Apply` type](https://github.com/fantasyland/fantasy-land#apply), but their formulation isn't ideal for pragmatic reasons.
-    - It necessitates closures nested within values, which is not easy to optimize on the fly.
-    - Note that the two variants are [mathematically specifiable in terms of each other](https://hackage.haskell.org/package/base-4.10.1.0/docs/Control-Applicative.html).
-    - It does appear that in *some* cases (particularly with function instances), it's easier to do `x.ap(y.map(f)))` than `x.lift2(y, f)`. This is not the case with most, however.
-- Ideally, the main method/function should make repeated nested application easy, like something to the effect of `lift(...xs, (...as) => ...)`.
-    - Ramda provides this method (via a different prototype) for Fantasy Land applicatives, but we should make that the default, not something you have to request.
-
-### Pipeline manipulation
-
-This requires a new primitive like `Symbol.chain` for invoking a callback and returning based on its entries.
-
-- Callback returns the next value or `null`/`undefined` to break
-
-**Concept syntax:**
-
-These desugar to `Symbol.chain`, but with some somewhat complex logic.
-
-```js
-coll >:> func; func <:< coll
-// Compiles to:
-invokeChainSync(coll, func)
-
-coll >:> await func; await func <:< coll
-// Compiles to:
-invokeChainAsync(coll, func)
-
-// Helpers (unoptimized)
-function invokeChainSync(coll, func) {
-    if (typeof func !== "function") throw new TypeError()
-    return coll[Symbol.chain](x => {
-        const f = func
-        if (f == null) throw new ReferenceError()
-        const result = f(x)
-        if (result == null) { func = void 0; return }
-        return castChainReturn(result)
-    })
-}
-
-async function invokeChainAsync(coll, func) {
-    if (typeof func !== "function") throw new TypeError()
-    let resolve
-    const p = new Promise(r => resolve = r)
-    let count = 1
-
-    try {
-        return await coll[Symbol.chain](async (...xs) => {
-            try {
-                if (func == null) throw new ReferenceError()
-                let result = func(...xs)
-                // Unlikely, but we still need to account for it.
-                if (func == null) throw new ReferenceError()
-                count++
-                try {
-                    result = await result
-                } finally {
-                    if (count === 0 || --count === 0) { resolve(); resolve = void 0 }
-                }
-                // Unlikely, but we still need to account for it.
-                if (func == null) throw new ReferenceError()
-                if (result == null) { func = void 0; count = 0; return }
-                return castChainReturn(result)
-            } catch (e) {
-                return Promise.reject(e)
-            }
-        })
-    } finally {
-        if (count !== 0 && --count !== 0) await p
-        resolve = void 0; count = 0
-    }
-}
-
-function castChainReturn(result) {
-    if (Array.isArray(result)) return result
-    if (typeof result[Symbol.chain] === "function") return result
-    if (typeof result[Symbol.iterator] === "function") return Array.from(result)
-    throw new TypeError()
-}
-```
-
-- When the callback returns `null` or `undefined`, it returns that directly.
-- When the callback returns a chainable, it's returned directly (so it works for things like flattening).
-- When the callback returns an iterable, it's returned directly (for performance).
-- For anything else, it throws.
-- The `x >:> await f` variant is *not* permitted outside async contexts.
-- With the `x >:> await f` variant, its values are awaited as well as the whole collection and its callbacks.
-    - If you want to just map over a list within a promise, you can just do `promise.then(list => list >:> ...)`.
-- This is probably the most complicated case.
-
-**Concept implementations:**
-
-- `Array.prototype[Symbol.chain]`: Basically the proposed `Array.prototype.flatMap`, but aware of the rules above.
-
-- `Generator.prototype[Symbol.chain]`, etc.: Flattens iterables out.
-
-- `Promise.prototype[Symbol.chain]`, etc.: Alias for `Promise.prototype[Symbol.lift]`.
-
-**Stream Operators:**
-
-Here's some common stream operators, using this idea to be implemented generically:
-
-```js
-// Usage: x >:> distinct(by?)
-function distinct(by = Object.is) {
-    let hasPrev = false, prev
-    return x => {
-        const memo = hasPrev
-        hasPrev = true
-        return memo || by(prev, prev = x) ? [x] : []
-    }
-}
-
-// Usage: x >:> filter(func)
-function filter(func) {
-    let hasPrev = false, prev
-    return x => func(x) ? [x] : []
-}
-
-// Usage: x >:> scan(func)
-function scan(func) {
-    let hasPrev = false, prev
-    return x => {
-        const memo = hasPrev
-        hasPrev = true
-        return memo ? [prev, func(prev, prev = x)] : [prev = x]
-    }
-}
-
-// Usage: x |> each(func)
-function each(func) {
-    return coll => coll >:> (func :> test => test ? [] : undefined)
-}
-
-// Usage: x |> eachAwait(func)
-function eachAwait(func) {
-    return async coll => coll >:> await (func :> test => test ? [] : undefined)
-}
-```
-
-TODO: more
+Depending on whether [cancellation](https://github.com/tc39/proposal-cancellation) turns out to include sugar syntax, this could hook into and integrate with that, adding an extra optional argument to all symbol hooks (like `Symbol.lift`, etc.) to allow handling cancellation (if they support it). This could allow much better cleanup in the face of cancellation, like closing sockets or aborting long polling loops.
 
 ## Inspiration
 
 - This is very similar to Fantasy Land's [`fantasy-land/map`](https://github.com/fantasyland/fantasy-land#functor) method, although it's a little more permissive.
 - And, of course, the [pipeline operator proposal](https://github.com/tc39/proposal-pipeline-operator), in which this shares a *lot* of genes with.
+- This isn't even my first iteration into the foray of iterative, async, parallel, and otherise non-von Neumann stuff.
+    - Emulated `async`/`await` in LiveScript: https://gist.github.com/isiahmeadows/0ea14936a1680065a3a3
+    - Module-based parallel JS strawman: https://gist.github.com/isiahmeadows/a01799b4dc9019c55dfcd809450afd24
+        - Some parts evolved into a library for worker pools: https://github.com/isiahmeadows/invoke-parallel
+        - Since found a similar (smaller-scoped) equivalent for browsers: https://github.com/developit/workerize-loader
+    - Generator-inspired async proposal: https://github.com/isiahmeadows/non-linear-proposal
+        - Original gist: https://gist.github.com/isiahmeadows/ba298c7de6bbf1c36448f718be6a762b
+    - Better promise abstraction: https://gist.github.com/isiahmeadows/2563c9dcf8b19bc2875e5cfb3d7709ad
+        - TL;DR: you can still make things easy for consumers without making it so difficult for producers.
 
 ## Related strawmen/proposals
 
-This is most certainly *not* on its own little island. Here's a few other proposals that also deal with functions and/or functional programming in general:
+This is most certainly *not* on its own little island - [even the introduction shows this](#introduction). Here's several other existing proposals that could potentially benefit, or in some cases, be truly amplified, from this proposal, whether via being able to integrate with this well to its benefit, enhancing and complementing this proposal itself, or just being generally useful alongside it:
 
-- `this` binding/pipelining: https://github.com/tc39/proposal-bind-operator
-- Pipeline operator (unlifted): https://github.com/tc39/proposal-pipeline-operator
-- Partial application: https://github.com/rbuckton/proposal-partial-application
-- Do expressions: https://gist.github.com/dherman/1c97dfb25179fa34a41b5fff040f9879
+- Function pipelining:
+    - `this` binding/pipelining: https://github.com/tc39/proposal-bind-operator
+    - Pipeline operator (unlifted): https://github.com/tc39/proposal-pipeline-operator
+    - This is supposed to be an extension of whichever proposal is selected.
+    - If we go with `this`-based pipelines, I'll likely transition to built-in method helpers instead of operators to fit it better visually. (I'd go with `x::lift(f)`/`x::chain(f)`/`x::asyncChain(f)` where `const {lift, chain, asyncChain} = Object` - they're easy enough to destructure out.)
+
 - Pattern matching: https://github.com/tc39/proposal-pattern-matching
+    - Branching within callbacks would become much cleaner to do.
 
-Here's an example of this with some of the other proposals:
+- Observables: https://github.com/tc39/proposal-observable
+    - This would give that superpowers without having to explicitly code the usual monstrosity of methods.
 
-```js
-// Original
-import * as _ from "lodash"
-function toSlug(input) {
-    return encodeURIComponent(
-        _(input)
-            .split(" ")
-            .map(_.toLower)
-            .join("-")
-    )
-}
+- Cancellation: https://github.com/tc39/proposal-cancellation
+    - This could enable proxying such requests through the operator to the implementations.
 
-// With this proposal + the partial application proposal
-import * as _ from "lodash"
-const toSlug =
-    _.split(?, " ")
-    :> _.map(?, _.toLower)
-    :> _.join(?, "-")
-    :> encodeURIComponent
-```
+- Extra collection methods: https://github.com/tc39/proposal-collection-methods
+    - This could be coded generically to cover not only sets/maps, but also observables and generators, without explicit support.

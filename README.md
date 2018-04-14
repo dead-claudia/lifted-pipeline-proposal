@@ -1,6 +1,6 @@
 # Lifted Pipeline Proposal
 
-1. [TL;DR: Just cut to the chase - I don't have time for a long explanation](#tldr-just-cut-to-the-chase--i-dont-have-time-for-a-long-explanation-)
+1. [TL;DR: Just cut to the chase - I don't have time for a long explanation](#tldr-just-cut-to-the-chase---i-dont-have-time-for-a-long-explanation-)
     - [If you have a little more time...](#if-you-have-a-little-more-time-)
 1. [Introduction](#introduction-)
 1. [Pipeline lifting](#pipeline-lifting---)
@@ -24,7 +24,7 @@
 1. Async variants exist for each, via `coll :> async func`/`Object.asyncCombine`/`coll >:> async func`, with matching `@@async{Lift,Combine,Chain}` symbols for each.
 1. `coll :> await func` &harr; `await (coll :> async func)`, `coll >:> await func` &harr; `await (coll >:> async func)`.
 
-### If you have a little more time... ([▲](#tldr-just-cut-to-the-chase--i-dont-have-time-for-a-long-explanation-))
+### If you have a little more time... ([▲](#tldr-just-cut-to-the-chase---i-dont-have-time-for-a-long-explanation-))
 
 The proposal is in three parts:
 

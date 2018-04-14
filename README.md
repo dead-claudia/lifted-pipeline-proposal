@@ -5,6 +5,7 @@
 3. [Pipeline combining](#pipeline-combining---)
 4. [Pipeline manipulation](#pipeline-manipulation---)
 5. [Why operators, not functions?](#why-operators-not-functions-)
+5. [Why this? We already have `.map`/`.filter`/etc...](#why-this-we-already-have-mapfilteretc-)
 6. [Possible expansions](#possible-expansions-)
     - [`Object.box(value)`](#objectboxvalue-)
     - [Cancellation proxying](#cancellation-proxying-)
@@ -109,7 +110,7 @@ Observable.of(".close1", ".close2", ".close3")
 })
 ```
 
-Problem is, there's this massive boilerplate, complexity, and jQuery-like tendencies inherent with [nearly](http://reactivex.io/rxjs/manual/overview.html) [every](https://baconjs.github.io/api2.html) [reactive](http://highlandjs.org/) [library](https://github.com/cujojs/most) [out](https://github.com/pozadi/kefir) [there](http://staltz.github.io/xstream/). RxJS has attempted to compromise with a `.do(func)`/`.let(func)` that's the moral equivalent of a [`|>` operator](https://github.com/tc39/proposal-pipeline-operator/), but even then, using custom operators doesn't feel as natural as built-in ones. (jQuery and Underscore/Lodash have similar issues here, especially jQuery.) Using this proposal (all three parts) + the pipeline operator proposal + the [observable proposal](https://github.com/tc39/proposal-observable), this could turn out a bit easier and lighter (not much longer than [with all the RxJS magic](https://github.com/isiahmeadows/non-linear-proposal/blob/master/examples/comparison/rxjs-click.js), but *fully* zero-dependency mod polyfills/transpiling as necessary):
+Problem is, there's this massive boilerplate, complexity, and jQuery-like tendencies inherent with [nearly](http://reactivex.io/rxjs/manual/overview.html) [every](https://baconjs.github.io/api2.html) [reactive](http://highlandjs.org/) [library](https://github.com/cujojs/most) [out](https://github.com/pozadi/kefir) [there](http://staltz.github.io/xstream/). RxJS has attempted to compromise with a `.do(func)`/`.let(func)` that's the moral equivalent of a [`|>` operator](https://github.com/tc39/proposal-pipeline-operator/), but even then, using custom operators doesn't feel as natural as built-in ones. (jQuery and Underscore/Lodash have similar issues here, especially jQuery.) Using this proposal (all three parts) + the pipeline operator proposal + the [observable proposal](https://github.com/tc39/proposal-observable), this could turn out a bit easier and lighter:
 
 ```js
 // This proposal (35 SLoC)
@@ -234,20 +235,7 @@ for (const selector of [".close1", ".close2", ".close3"]) {
 }
 ```
 
-Of course, partial userland solutions have existed for a while for several of these issues with compatibility and extensibility (for [observables](https://github.com/jhusain/observable-spec) + [variant](https://github.com/staltz/fantasy-observable), [many basic data structures](https://github.com/fantasyland/fantasy-land), [thenables](https://github.com/promises-aplus/promises-spec), [iterables](https://tc39.github.io/ecma262/#sec-iterable-interface) + [async variant](https://tc39.github.io/ecma262/#sec-asynciterable-interface)), but this is an attempt to unify most of these under a single umbrella in a way that *feels* like JS, something that just fits right in. Furthermore, even though it *is* possible to implement this in userland, it's not ideal, hence the need for a new standard:
-
-1. Most in-language implementations of function composition involve a `.reduce` or equivalent out of necessity since they are almost always variadic. In this scenario, engines commonly end up seeing the value as megamorphic, whether in `for` or the native `.reduce`, because there's only two independent IC feedback points, and because of this, it ends up hitting the slow path *every single time*. A native assist would be invaluable for this.
-
-2. Engines have had *so* much trouble with optimizing Array builtins in the past, and userland implementations are even slower than that. With this proposal, the intermediate values are inaccessible unless the symbols are overridden, making optimization opportunities easier.
-    - V8 only just recently managed to crack the nut of inlining array methods like `.map` and `.filter` while eliding the intermediate function allocation *and* has-property check, because they can't just naïvely do a for loop - they *also* have to skip missing properties. And given the fact loop bodies can delete elements mid-loop, they had to first provide the ability to bail out from *within* existing optimized code into a slow path *corresponding that same segment of optimized code*, which is easier said than done. (No other engine does this IIUC.)
-    - No engine AFAIK currently reuses existing intermediate arrays, although I've mentioned in an aside in [this V8 bug](https://bugs.chromium.org/p/v8/issues/detail?id=7436) that it's *possible* given the right set of ICs and static analysis checks.
-    - In fact, for builtins (like arrays and iterables), it can frequently just merge two pipeline chains into a single callback internally. This is part of why I designed the proposal the way I did - engines don't need massive amounts of static analysis for massive gains.
-
-3. Userland standards tend to be much better at working us into [this ugly problem](https://xkcd.com/927/). We need fewer of those.
-    - For one, as a library writer, figuring out what the heck to implement for things that are kind of iterable-ish, but not in a way I can just implement `Symbol.iterator`, leads me to write the same exact methods about 5 times over for repeated variants.
-    - Most existing "standards" for streams are so special-cased to a single *type* of library (monadic streams) that it occludes creating another form entirely (arrow-like streams).
-    - The only real "standard" for non-stream collection-like constructs that aren't necessarily iterable is with Fantasy Land, and it doesn't always pick the most efficient way of specifying the various constructs. ([Church-encoding the results over just using `{done, value}`, really?](https://github.com/fantasyland/fantasy-land#chainrec))
-    - If the system is broken and impossible to fix, it's best to just throw it all away and start over.
+It's not much longer than the RxJS variant, but critically, it has zero dependencies beyond polyfills
 
 ## Pipeline lifting ([▲](#lifted-pipeline-proposal) | [▶](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-lift.md))
 
@@ -354,6 +342,42 @@ function takeWhile(cond) {
 This isn't the only one, [there's several other helpers that become trivial to write](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-manipulation.md#use-cases), which may change how you find yourself manipulating collections in some cases.
 
 Also, there is an async variant that awaits both the result and its callbacks before resolving, coming in two flavors: `x >:> async func` (returns promise) and `x >:> await func` (for `async`/`await`, awaits result). This variant is itself non-trivial, not because the basic common functionality is complex, but due to various edge cases, and it's the only non-trivial facet of this entire proposal.
+
+## Why this? We already have `.map`/`.filter`/etc... ([▲](#lifted-pipeline-proposal))
+
+It's much more general and open. I wanted to seek the lowest denominator for working with collections, one that keeps the user's cognitive overhead at a minimum and one that didn't make the implementation of various operators difficult. Yeah, it's nice to have high-level operators as methods, but I wanted to provide the means for people to define *what looping is like* for their types, so they can be looped over similarly to iterables and friends, with all the same set of control flow possibilities. Specifically:
+
+- I wanted to keep it flexible and meaningful semantically.
+    - Some things are easily mapped over, but not everything is meaningfully combined. A good example of this is with functions. (You *could* implement such a method for them, but it's not really useful in practice, just in theory.)
+    - Some things are easily combined, but not everything is meaningfully chained. A good example of this is with a validation object, where you either have a single value or a list of errors. (In fact, you *can't* chain this one like you can with promises - chained values can depend on previously chained results, while failed validations [don't have a result you can chain](https://stackoverflow.com/a/40540290).)
+    - Another example of something that can be combined, but not chained, is a [named, managed, observable slot](https://developer.mozilla.org/en-US/docs/Web/API/HTMLSlotElement). If you can't control it, you can't chain it without loss of information.
+
+- I wanted to decouple the object from the action, and more so, the type from the action.
+    - The reason why the iterable interface is *so* attractive to implement is because people can then just use it natively in `for` loops and the like. You don't need to make assumptions about the object you have apart from that one clear interface. (If they have a weird `.forEach` or a [non-traditional `.filter`](http://api.jquery.com/filter/), you don't need to care about that.)
+    - Picking an interface for people to implement makes it much easier to avoid the long monstrosity of overly-specific methods that plague jQuery, Lodash, Underscore, RxJS, BaconJS, Bluebird, and nearly every other utility belt out there.
+    - Having the type decoupled from the action helps make it easier to write such utility methods yourself and share them elsewhere.
+
+- I wanted to pick the minimal pragmatic solution that solved the problem *as a whole*.
+    - There's a key difference between [bolting on interface after interface](http://openjdk.java.net/jeps/0) to add missing features and [actually thinking through your programming model before implementing it](https://github.com/rust-lang/rfcs/blob/master/text/2033-experimental-coroutines.md).
+    - The minimal solution does *not* keep people from implementing utility functions themselves. In fact, the ability to *recreate* those methods is an explicit goal of this entire proposal. (If you can reimplement `Array.prototype.filter`'s basic functionality with this proposal, that's a good thing.)
+    - The "minimal" part shouldn't be considered relative to each part, but to the sum of them. Adding 15 relatively simple interfaces is worse than 3 slightly more complicated interfaces that can cover the same ground.
+    - The minimal solution should consider ease of use and implementation, not just ease of modeling - if a marginal increase in a feature's complexity makes the user's code complexity *substantially* lesser, I would consider that a reduction towards a minimal solution.
+    - The minimal solution should consider ease of use and implementation over elegance of the surrounding model. Even if something looks like a hack, if it makes 99% of cases simple, it doesn't need to be the perfect work of art just to cover that 1% of remaining cases. Lambda calculus and its "elegant"-yet-counterintuitive model isn't the ideal here, and it doesn't make much sense in a dynamically typed programming language to try to emulate [System F<sub>&lt;:</sub>](https://en.wikipedia.org/wiki/System_F-sub) or [CoC](https://en.wikipedia.org/wiki/Calculus_of_constructions) just because they mathematically look cool. (Sorry, Fantasy Land fans.)
+
+Of course, partial userland solutions have existed for a while for several of these issues with compatibility and extensibility (for [observables](https://github.com/jhusain/observable-spec) + [variant](https://github.com/staltz/fantasy-observable), [many basic data structures](https://github.com/fantasyland/fantasy-land), [thenables](https://github.com/promises-aplus/promises-spec), [iterables](https://tc39.github.io/ecma262/#sec-iterable-interface) + [async variant](https://tc39.github.io/ecma262/#sec-asynciterable-interface)), but this is an attempt to unify most of these under a single umbrella in a way that *feels* like JS, something that just fits right in without being *too* out there and unusual (especially in light of other recent proposals). Furthermore, even though it *is* possible to implement this in userland, it's not ideal, hence the need for a new standard:
+
+1. Most in-language implementations of function composition involve a `.reduce` or equivalent out of necessity since they are almost always variadic. In this scenario, engines commonly end up seeing the value as megamorphic, whether in `for` or the native `.reduce`, because there's only two independent IC feedback points, and because of this, it ends up hitting the slow path *every single time*. A native assist would be invaluable for this.
+
+2. Engines have had *so* much trouble with optimizing Array builtins in the past, and userland implementations are even slower than that. With this proposal, the intermediate values are inaccessible unless the symbols are overridden, making optimization opportunities easier.
+    - V8 only just recently managed to crack the nut of inlining array methods like `.map` and `.filter` while eliding the intermediate function allocation *and* has-property check, because they can't just naïvely do a for loop - they *also* have to skip missing properties. And given the fact loop bodies can delete elements mid-loop, they had to first provide the ability to bail out from *within* existing optimized code into a slow path *corresponding that same segment of optimized code*, which is easier said than done. (No other engine does this IIUC.)
+    - No engine AFAIK currently reuses existing intermediate arrays, although I've mentioned in an aside in [this V8 bug](https://bugs.chromium.org/p/v8/issues/detail?id=7436) that it's *possible* given the right set of ICs and static analysis checks.
+    - In fact, for builtins (like arrays and iterables), it can frequently just merge two pipeline chains into a single callback internally. This is part of why I designed the proposal the way I did - engines don't need massive amounts of static analysis for massive gains.
+
+3. Userland standards tend to be much better at working us into [this ugly problem](https://xkcd.com/927/). We need fewer of those.
+    - For one, as a library writer, figuring out what the heck to implement for things that are kind of iterable-ish, but not in a way I can just implement `Symbol.iterator`, leads me to write the same exact methods about 5 times over for repeated variants.
+    - Most existing "standards" for streams are so special-cased to a single *type* of library (monadic streams) that it occludes creating another form entirely (arrow-like streams).
+    - The only real "standard" for non-stream collection-like constructs that aren't necessarily iterable is with Fantasy Land, and it doesn't always pick the most efficient way of specifying the various constructs. ([Church-encoding the results over just using `{done, value}`, really?](https://github.com/fantasyland/fantasy-land#chainrec))
+    - If the system is broken and impossible to fix, it's best to just throw it all away and start over.
 
 ## Why operators, not functions? ([▲](#lifted-pipeline-proposal))
 

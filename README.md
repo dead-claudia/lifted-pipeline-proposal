@@ -1,6 +1,6 @@
 # Lifted Pipeline Proposal
 
-1. [TL;DR: Just cut to the chase - I don't have time for a long explanation](#tldr-just-cut-to-the-chase---i-dont-have-time-for-a-long-explanation-)
+1. [TL;DR: Just cut to the chase - I don't have time for a long explanation](#tldr-just-cut-to-the-chase-)
     - [If you have a little more time...](#if-you-have-a-little-more-time-)
 1. [Introduction](#introduction-)
 1. [Pipeline lifting](#pipeline-lifting---)
@@ -16,7 +16,7 @@
 
 -----
 
-## TL;DR: Just cut to the chase - I don't have time for a long explanation ([▲](#lifted-pipeline-proposal))
+## TL;DR: Just cut to the chase ([▲](#lifted-pipeline-proposal))
 
 1. [Pipeline lifting](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-lift.md) for simple `.map`/`.then`-like stuff, using `coll :> func` + `@@lift`.
 1. [Pipeline combining](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-combine.md) for simple `.merge`/`.combine`-like stuff, using `Object.combine(...colls, func)` + `@@combine`.

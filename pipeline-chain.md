@@ -35,60 +35,65 @@ Here's how `Symbol.chain` would be implemented for some built-in types:
 One easy way to use it is with defining custom stream operators, generically enough you don't usually need to concern yourself about what stream implementation they're using, or even if it's really a stream and not a generator. Here's some common stream operators, implemented using this idea:
 
 ```js
-// Usage: distinct(coll, {by?, with?})
-function distinct(coll, {by = (a, b) => a === b, with: get = x => x} = {}) {
+// Usage: coll |> distinct({by?, with?})
+function distinct({by = (a, b) => a === b, with: get = x => x} = {}) {
     let hasPrev = false, prev
-    return Object.chain(coll, x => {
+    return coll => Object.chain(coll, x => {
         const memo = hasPrev
         hasPrev = true
         return !memo || by(prev, prev = get(x)) ? [x] : []
     }
 }
 
-// Usage: filter(coll, func)
-function filter(coll, func) {
-    return Object.chain(coll, x => func(x) ? [x] : [])
+// Usage: coll |> map(func)
+function map(func) {
+    return coll => Object.then(coll, func)
 }
 
-// Usage: scan(coll, func)
-function scan(coll, func) {
+// Usage: coll |> filter(func)
+function filter(func) {
+    return coll => Object.chain(coll, x => func(x) ? [x] : [])
+}
+
+// Usage: coll |> scan(func)
+function scan(func) {
     let hasPrev = false, prev
-    return Object.chain(coll, x => {
+    return coll => Object.chain(coll, x => {
         const memo = hasPrev
         hasPrev = true
         return memo ? [prev, func(prev, prev = x)] : [prev = x]
     })
 }
 
-// Usage: each(coll, func)
+// Usage: coll |> each(func)
 // Return truthy to break
-function each(coll, func) {
-    return Object.chain(coll, item => func(item) ? undefined : [])
+function each(func) {
+    return coll => Object.chain(coll, item => func(item) ? undefined : [])
 }
 
-// Usage: eachAsync(coll, func)
+// Usage: coll |> eachAsync(func)
 // Return truthy to break
-function eachAsync(coll, func) {
-    return Object.chainAsync(coll, async item => await func(item) ? undefined : [])
+function eachAsync(func) {
+    return coll => Object.chainAsync(coll, async item => await func(item) ? undefined : [])
 }
 
-// Usage: tap(coll, func)
-function tap(coll, func) {
-    return Object.then(coll, item => { func(item); return item })
+// Usage: coll |> tap(func)
+function tap(func) {
+    return coll => Object.then(coll, item => { func(item); return item })
 }
 
-// Usage: tapAsync(coll, func)
-function tapAsync(coll, func) {
-    return Object.thenAsync(coll, async item => { await func(item); return item })
+// Usage: coll |> tapAsync(func)
+function tapAsync(func) {
+    return coll => Object.thenAsync(coll, async item => { await func(item); return item })
 }
 
-// Usage: x >:> uniq({by?, with?})
-function uniq(coll, {by, with: get = x => x} = {}) {
+// Usage: coll |> uniq({by?, with?})
+function uniq({by, with: get = x => x} = {}) {
     const set = by == null ? new Set() : (items => ({
         has: item => items.some(memo => by(memo, item)),
         add: item => items.push(item),
     })([])
-    return Object.chain(coll, item => {
+    return coll => Object.chain(coll, item => {
         const memo = get(item)
         if (set.has(memo)) return []
         set.add(memo)

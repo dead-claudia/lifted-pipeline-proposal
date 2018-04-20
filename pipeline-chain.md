@@ -45,8 +45,8 @@ function distinct({by = (a, b) => a === b, with: get = x => x} = {}) {
     }
 }
 
-// Usage: coll |> map(func)
-function map(func) {
+// Usage: coll |> then(func)
+function then(func) {
     return coll => Object.then(coll, func)
 }
 

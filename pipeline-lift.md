@@ -50,11 +50,12 @@ const toSlug = composeRight(
 Or, using this proposal:
 
 ```js
-const toSlug =
-    _ => _.split(" ")
-    :> _ => _.map(str => str.toLowerCase())
-    :> _ => _.join("-")
-    :> encodeURIComponent
+const toSlug = Object.then(
+    _ => _.split(" "),
+    _ => _.map(word => word.toLowerCase()),
+    _ => _.join("-"),
+    encodeURIComponent
+)
 ```
 
 Another scenario is when you just want to trivially transform a collection. `Array.prototype.map` exists already for this purpose, but we can do that for maps and sets, too. This would let you turn code from this, to re-borrow a previous example:
@@ -75,7 +76,7 @@ to something that's a little less nested (in tandem with the [pipeline operator 
 function toSlug(string) {
     return string
     |> _ => _.split(" ")
-    :> word => word.toLowerCase()
+    |> _ => Object.then(_, word => word.toLowerCase())
     |> _ => _.join("-")
     |> encodeURIComponent
 }
@@ -93,31 +94,38 @@ These are, of course, very convenient functions to have, but it's very inefficie
 
 Here's what I propose:
 
-1. A new low-precedence `x :> f` left-associative infix operator for left-to-right lifted pipelines.
-1. An async variant `x :> async f` for pipelines with async return values and/or callbacks.
-1. An async variant `x :> await f` that is sugar for `await (x :> async f)`
-1. Two new well-known symbols `@@lift` and `@@asyncLift` that are used by those pipeline operators to dispatch based on type.
+1. A new `Object.then(x, ...fs)` function for lifted calls
+1. A new `Object.asyncThen(x, ...fs)` function for lifted async calls
+1. Two new well-known symbols `@@then` and `@@asyncThen` that are used by those pipeline operators to dispatch based on type.
 
 The pipeline operators simply call `Symbol.lift`/`Symbol.asyncLift`:
 
 ```js
-function pipe(x, f) {
-    if (typeof func !== "function") throw new TypeError()
-    return x[Symbol.lift](x => f(x))
+Object.then = function (x, ...funcs) {
+    for (let i = 0; i < funcs.length; i++) {
+        const func = funcs[i]
+        if (typeof func !== "function") throw new TypeError()
+        x = x[Symbol.then](x => f(x))
+    }
+    return x
 }
 
-async function asyncPipe(x, f) {
-    if (typeof func !== "function") throw new TypeError()
-    return x[Symbol.asyncLift](async x => f(x))
+Object.asyncThen = function (x, ...funcs) {
+    for (let i = 0; i < funcs.length; i++) {
+        const func = funcs[i]
+        if (typeof func !== "function") throw new TypeError()
+        x = x[Symbol.asyncThen](async x => f(x))
+    }
+    return x
 }
 ```
 
-Here's how that `Symbol.lift` would be implemented for some of these types (`Symbol.asyncLift` would be nearly identical for each of these):
+Here's how that `Symbol.then` would be implemented for some of these types (`Symbol.asyncThen` would be nearly identical for each of these):
 
-- `Function.prototype[Symbol.lift]`: binary function composition like this:
+- `Function.prototype[Symbol.then]`: binary function composition like this:
 
     ```js
-    Function.prototype[Symbol.lift] = function (g) {
+    Function.prototype[Symbol.then] = function (g) {
         const f = this
         // Note: this should only be callable.
         return function (...args) {
@@ -126,14 +134,14 @@ Here's how that `Symbol.lift` would be implemented for some of these types (`Sym
     }
     ```
 
-- `Array.prototype[Symbol.lift]`: Equivalent to `Array.prototype.map`, but only calling the callback with one argument. (This enables optimizations not generally possible with `Array.prototype.map`, like eliding intermediate array allocations.)
+- `Array.prototype[Symbol.then]`: Equivalent to `Array.prototype.map`, but only calling the callback with one argument. (This enables optimizations not generally possible with `Array.prototype.map`, like eliding intermediate array allocations.)
 
-- `Promise.prototype[Symbol.lift]`: Equivalent to `Promise.prototype.then`, if passed only one argument.
+- `Promise.prototype[Symbol.then]`: Equivalent to `Promise.prototype.then`, if passed only one argument.
 
-- `Iterable.prototype[Symbol.lift]`: Returns an iterable that does this:
+- `Iterable.prototype[Symbol.then]`: Returns an iterable that does this:
 
     ```js
-    Iterable.prototype[Symbol.lift] = function (func) {
+    Iterable.prototype[Symbol.then] = function (func) {
         return {
             next: v => {
                 const {done, value} = this.next(v)
@@ -145,10 +153,10 @@ Here's how that `Symbol.lift` would be implemented for some of these types (`Sym
     }
     ```
 
-- `Map.prototype[Symbol.lift]`: Map iteration/update like this:
+- `Map.prototype[Symbol.then]`: Map iteration/update like this:
 
     ```js
-    Map.prototype[Symbol.lift] = function (func) {
+    Map.prototype[Symbol.then] = function (func) {
         const result = new this.constructor()
         
         for (const pair of this) {
@@ -160,10 +168,10 @@ Here's how that `Symbol.lift` would be implemented for some of these types (`Sym
     }
     ```
 
-- `Set.prototype[Symbol.lift]`: Set iteration/update like this:
+- `Set.prototype[Symbol.then]`: Set iteration/update like this:
 
     ```js
-    Set.prototype[Symbol.lift] = function (func) {
+    Set.prototype[Symbol.then] = function (func) {
         const result = new this.constructor()
 
         for (const value of this) {

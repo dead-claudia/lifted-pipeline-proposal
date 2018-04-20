@@ -72,6 +72,16 @@ function eachAsync(coll, func) {
     return Object.chainAsync(coll, async item => await func(item) ? undefined : [])
 }
 
+// Usage: tap(coll, func)
+function tap(coll, func) {
+    return Object.then(coll, item => { func(item); return item })
+}
+
+// Usage: tapAsync(coll, func)
+function tapAsync(coll, func) {
+    return Object.thenAsync(coll, async item => { await func(item); return item })
+}
+
 // Usage: x >:> uniq({by?, with?})
 function uniq(coll, {by, with: get = x => x} = {}) {
     const set = by == null ? new Set() : (items => ({

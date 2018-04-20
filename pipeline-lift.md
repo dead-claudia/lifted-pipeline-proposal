@@ -101,19 +101,15 @@ Here's what I propose:
 The pipeline operators simply call `Symbol.then`/`Symbol.asyncThen`:
 
 ```js
-function invokeThen(x) {
-    for (var i = 1; i < arguments.length; i++) {
-        if (typeof arguments[i] !== "function") throw new TypeError()
-    }
-    for (var i = 1; i < arguments.length; i++) {
-        const func = arguments[i]
-        x = x[Symbol.then](this(arguments[i]))
-    }
-    return x
-}
-
 function syncWrap(f) {
     return function (x) { return f(x) }
+}
+
+Object.then = function then(x) {
+    for (var i = 1; i < arguments.length; i++) {
+        x = x[Symbol.then](syncWrap(arguments[i]))
+    }
+    return x
 }
 
 function asyncWrap(f) {
@@ -126,12 +122,11 @@ function asyncWrap(f) {
     }
 }
 
-Object.then = function then(x) {
-    return invokeThen.apply(syncWrap, arguments)
-}
-
 Object.asyncThen = function asyncThen(x) {
-    return invokeThen.apply(asyncWrap, arguments)
+    for (var i = 1; i < arguments.length; i++) {
+        x = x[Symbol.asyncThen](asyncWrap(arguments[i]))
+    }
+    return x
 }
 ```
 

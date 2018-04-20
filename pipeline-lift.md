@@ -98,25 +98,40 @@ Here's what I propose:
 1. A new `Object.asyncThen(x, ...fs)` function for lifted async calls
 1. Two new well-known symbols `@@then` and `@@asyncThen` that are used by those builtins to dispatch based on type.
 
-The pipeline operators simply call `Symbol.then`/`Symbol.asyncthen`:
+The pipeline operators simply call `Symbol.then`/`Symbol.asyncThen`:
 
 ```js
-Object.then = function (x, ...funcs) {
-    for (let i = 0; i < funcs.length; i++) {
-        const func = funcs[i]
-        if (typeof func !== "function") throw new TypeError()
-        x = x[Symbol.then](x => f(x))
+function invokeThen(x) {
+    for (var i = 1; i < arguments.length; i++) {
+        if (typeof arguments[i] !== "function") throw new TypeError()
+    }
+    for (var i = 1; i < arguments.length; i++) {
+        const func = arguments[i]
+        x = x[Symbol.then](this(arguments[i]))
     }
     return x
 }
 
-Object.asyncThen = function (x, ...funcs) {
-    for (let i = 0; i < funcs.length; i++) {
-        const func = funcs[i]
-        if (typeof func !== "function") throw new TypeError()
-        x = x[Symbol.asyncThen](async x => f(x))
+function syncWrap(f) {
+    return function (x) { return f(x) }
+}
+
+function asyncWrap(f) {
+    return function (x) {
+        try {
+            return Promise.resolve(f(x))
+        } catch (e) {
+            return Promise.reject(e)
+        }
     }
-    return x
+}
+
+Object.then = function then(x) {
+    return invokeThen.apply(syncWrap, arguments)
+}
+
+Object.asyncThen = function asyncThen(x) {
+    return invokeThen.apply(asyncWrap, arguments)
 }
 ```
 
@@ -126,10 +141,9 @@ Here's how that `Symbol.then` would be implemented for some of these types (`Sym
 
     ```js
     Function.prototype[Symbol.then] = function (g) {
-        const f = this
-        // Note: this should only be callable.
-        return function (...args) {
-            return g.call(this, f.call(this, ...args))
+        var f = this
+        return function () {
+            return g.call(this, f.apply(this, arguments))
         }
     }
     ```
@@ -142,13 +156,18 @@ Here's how that `Symbol.then` would be implemented for some of these types (`Sym
 
     ```js
     Iterable.prototype[Symbol.then] = function (func) {
+        var iter = this
         return {
-            next: v => {
-                const {done, value} = this.next(v)
-                return {done, value: done ? value : func(value)}
+            next: function (v) {
+                var result = iter.next(v)
+                var done = result.done
+                return {
+                    done: done,
+                    value: done ? result.value : func(result.value)
+                }
             },
-            throw: v => this.throw(v),
-            return: v => this.return(v),
+            throw: function (v) { return iter.throw(v) },
+            return: function (v) { return iter.return(v) },
         }
     }
     ```
@@ -157,14 +176,9 @@ Here's how that `Symbol.then` would be implemented for some of these types (`Sym
 
     ```js
     Map.prototype[Symbol.then] = function (func) {
-        const result = new this.constructor()
-        
-        for (const pair of this) {
-            const [newKey, newValue] = func(pair)
-            result.set(newKey, newValue)
-        }
-
-        return result
+        return new this.constructor(Array.from(this, function (pair) {
+            return func(pair)
+        }))
     }
     ```
 
@@ -172,12 +186,8 @@ Here's how that `Symbol.then` would be implemented for some of these types (`Sym
 
     ```js
     Set.prototype[Symbol.then] = function (func) {
-        const result = new this.constructor()
-
-        for (const value of this) {
-            result.add(func(value))
-        }
-
-        return result
+        return new this.constructor(Array.from(this, function (value) {
+            return func(value)
+        }))
     }
     ```

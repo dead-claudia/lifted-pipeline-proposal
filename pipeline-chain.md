@@ -102,7 +102,7 @@ function uniq({by, with: get = x => x} = {}) {
 }
 ```
 
-## Helpers
+## Implementation
 
 The helpers themselves are not too complicated, but they do have things they have to account for, leading to what looks like redundant code, and some borderline non-trivial work:
 

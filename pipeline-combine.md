@@ -46,7 +46,7 @@ Here's how it'd be implemented for some builtins:
     - Maps and sets can implement this *very* efficiently.
     - Maps merge based on keys.
 
-- You *could* implement `Function.prototype[Symbol.combine]` to return `(a, b) => func(this(a), other(b))`, but it's not generally very useful (even in the world of Haskell).
+- You *could* implement `Function.prototype[Symbol.combine]` to return `(a, b) => func(this(a), other(b))`, but it's not generally very useful (even in the world of Haskell), and it'd interfere with the overload resolution.
 
 ## Implementation
 

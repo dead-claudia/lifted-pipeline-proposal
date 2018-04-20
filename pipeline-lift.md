@@ -98,7 +98,7 @@ Here's what I propose:
 1. A new `Object.asyncThen(x, ...fs)` function for lifted async calls
 1. Two new well-known symbols `@@then` and `@@asyncThen` that are used by those pipeline operators to dispatch based on type.
 
-The pipeline operators simply call `Symbol.lift`/`Symbol.asyncLift`:
+The pipeline operators simply call `Symbol.then`/`Symbol.asyncthen`:
 
 ```js
 Object.then = function (x, ...funcs) {

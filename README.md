@@ -122,7 +122,7 @@ const toSlug =
 
 Another scenario is when you just want to define a long stream:
 
-```
+```js
 // RxJS Observables
 import {Observable} from "rxjs"
 

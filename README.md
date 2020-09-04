@@ -82,8 +82,8 @@ Function composition has been used for years, even in JS applications. It's one 
 There's also the [numerous npm modules](https://www.npmjs.com/search?q=function+composition) and manual implementations (it's trivial to write a basic implementation). Conceptually, it's pretty basic:
 
 ```js
-function compose(f, g) {
-    return (...xs) => f(g(...xs))
+function pipe(f, g) {
+    return (...xs) => g(f(...xs))
 }
 ```
 
@@ -107,7 +107,7 @@ const toSlug = [
     _ => _.map(str => str.toLowerCase()),
     _ => _.join("-"),
     encodeURIComponent,
-].reduce(compose)
+].reduce(pipe)
 ```
 
 Or, using this proposal:

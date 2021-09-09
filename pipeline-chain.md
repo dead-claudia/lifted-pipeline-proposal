@@ -10,142 +10,99 @@ This requires a new primitive like `Symbol.chain` for invoking a callback and re
 - An array of zero or more values to wrap
 - `null`/`undefined` as a cue to break and/or unsubscribe.
 
-These desugar to a `Symbol.chain` call, and exist to allow expressing complex logic without sacrificing conciseness or becoming too complex to use in of themselves. There are three variants:
+These desugar to a `Symbol.chain` or `Symbol.asyncChain` call, and exist to allow expressing complex logic without sacrificing conciseness or becoming too complex to use in of themselves. There are two variants:
 
-- `coll >:> func` - This does a simple sync chain via `Symbol.chain`, returning the chained value. It may be used anywhere.
-- `coll >:> async func` - This does an async chain via `Symbol.asyncChain`, returning a promise to the chained result. It may be used anywhere.
-- `coll >:> await func` - This does an async chain, awaiting for and returning the chained result. It may be used only in `async` functions, and is sugar for `await (coll >:> async func)`.
+- `Object.chain(coll, ...funcs)` - This does a simple sync chain via `Symbol.chain`, returning the chained value.
+- `Object.chainAsync(coll, ...funcs)` - This does an async chain via `Symbol.asyncChain`, returning a promise to the chained result.
+- Two new well-known symbols `@@chain` and `@@asyncChain` used by the above builtins to dispatch based on type.
 
-The desugaring is pretty straightforward, but they require some runtime helpers:
+They are pretty simple conceptually: invoke the callback, unwrap it as applicable, and return the result. The callback returns one of three types (a `TypeError` is thrown otherwise):
 
-```js
-coll >:> func
-// Compiles to:
-invokeChainSync(coll, func)
-
-coll >:> async func
-// Compiles to:
-invokeChainAsync(coll, func)
-
-coll >:> await func
-// Compiles to:
-await invokeChainAsync(coll, func)
-```
+- A value with a `Symbol.chain` and/or `Symbol.asyncChain` method, to unwrap
+- An array of zero or more values to wrap
+- `null`/`undefined` as a cue to break and/or unsubscribe.
 
 Here's how `Symbol.chain` would be implemented for some built-in types:
 
 - `Array.prototype[Symbol.chain]`: Basically the proposed `Array.prototype.flatMap`, but aware of the rules above.
 
-- `Iterable.prototype[Symbol.chain]`, etc.: Flattens iterables out.
+- `Iterable.prototype[Symbol.chain]`, etc.: Flattens iterables out, but aware of the rules above.
 
-- `Promise.prototype[Symbol.chain]`, etc.: Alias for `Promise.prototype[Symbol.lift]`.
+- `Promise.prototype[Symbol.chain]`: Similar to `Promise.prototype.then`, except it doesn't resolve at all if the callback returns `null`/`undefined`.
 
 ## Use cases
 
 One easy way to use it is with defining custom stream operators, generically enough you don't usually need to concern yourself about what stream implementation they're using, or even if it's really a stream and not a generator. Here's some common stream operators, implemented using this idea:
 
 ```js
-// Usage: x >:> distinct({by?, with?})
+// Usage: coll |> distinct({by?, with?})
 function distinct({by = (a, b) => a === b, with: get = x => x} = {}) {
     let hasPrev = false, prev
-    return x => {
+    return coll => Object.chain(coll, x => {
         const memo = hasPrev
         hasPrev = true
         return !memo || by(prev, prev = get(x)) ? [x] : []
     }
 }
 
-// Usage: x >:> filter(func)
-function filter(func) {
-    return x => func(x) ? [x] : []
+// Usage: coll |> then(func)
+function then(func) {
+    return coll => Object.then(coll, func)
 }
 
-// Usage: x >:> scan(func)
+// Usage: coll |> filter(func)
+function filter(func) {
+    return coll => Object.chain(coll, x => func(x) ? [x] : [])
+}
+
+// Usage: coll |> scan(func)
 function scan(func) {
     let hasPrev = false, prev
-    return x => {
+    return coll => Object.chain(coll, x => {
         const memo = hasPrev
         hasPrev = true
         return memo ? [prev, func(prev, prev = x)] : [prev = x]
-    }
+    })
 }
 
-// Usage: x >:> each(func)
+// Usage: coll |> each(func)
 // Return truthy to break
 function each(func) {
-    return item => func(item) ? undefined : []
+    return coll => Object.chain(coll, item => func(item) ? undefined : [])
 }
 
-// Usage: x >:> async eachAsync(func)
+// Usage: coll |> eachAsync(func)
 // Return truthy to break
 function eachAsync(func) {
-    return async item => await func(item) ? undefined : []
+    return coll => Object.chainAsync(coll, async item => await func(item) ? undefined : [])
 }
 
-// Usage: x >:> uniq({by?, with?})
+// Usage: coll |> tap(func)
+function tap(func) {
+    return coll => Object.then(coll, item => { func(item); return item })
+}
+
+// Usage: coll |> tapAsync(func)
+function tapAsync(func) {
+    return coll => Object.thenAsync(coll, async item => { await func(item); return item })
+}
+
+// Usage: coll |> uniq({by?, with?})
 function uniq({by, with: get = x => x} = {}) {
     const set = by == null ? new Set() : (items => ({
         has: item => items.some(memo => by(memo, item)),
         add: item => items.push(item),
     })([])
-    return item => {
+    return coll => Object.chain(coll, item => {
         const memo = get(item)
         if (set.has(memo)) return []
         set.add(memo)
         return [item]
-    }
+    })
 }
 ```
 
-You can also generically define common collection predicates like `includes` or `every`, which work for observables, arrays, and streams equally (provided they're eagerly iterated), and still short-circuit.
-
-```js
-// Usage: includes(coll, item)
-function includes(coll, item) {
-    let result = false
-    coll >:> x => {
-        if (x !== item) return []
-        result = true
-        return undefined
-    }
-    return result
-}
-
-// Usage: includesAsync(coll, item)
-async function includesAsync(coll, item) {
-    let result = false
-    coll >:> await x => {
-        if (x !== item) return []
-        result = true
-        return undefined
-    }
-    return result
-}
-
-// Usage: every(coll, func)
-function every(coll, func) {
-    let result = true
-    coll >:> x => {
-        if (func(x)) return []
-        result = false
-        return undefined
-    }
-    return result
-}
-
-// Usage: everyAsync(coll, func)
-async function everyAsync(coll, func) {
-    let result = true
-    coll >:> await async x => {
-        if (await func(x)) return []
-        result = false
-        return undefined
-    }
-    return result
-}
-```
-
-## Helpers
+## Implementation
 
 The helpers themselves are not too complicated, but they do have things they have to account for, leading to what looks like redundant code, and some borderline non-trivial work:
 
@@ -155,76 +112,67 @@ The helpers themselves are not too complicated, but they do have things they hav
 - If cancellation support is added, we'd also have to manage that.
 
 ```js
-function invokeChainSync(coll, func) {
-    if (typeof func !== "function") throw new TypeError("callback must be a function")
-    var state = "open"
-    return coll[Symbol.chain](function (x) {
-        if (state === "locked") throw new ReferenceError("Recursive calls not allowed!")
-        if (state === "closed") throw new ReferenceError("Chain already closed!")
-        try { var result = func(x) } catch (e) { state = "open"; throw e }
-        if (result == null) { state = "closed"; func = void 0; return void 0 }
-        state = "open"
-        if (Array.isArray(result)) return result
-        
-        try {
-            state = "locked"
-            if (typeof result[Symbol.chain] === "function") return result
-            throw new TypeError("Invalid type for result")
-        } finally {
-            state = "open"
-        }
-    })
-}
-
-function invokeChainAsync(coll, func) {
-    function asyncNext(result) {
-        if (state === "closed") return void 0
-        if (result == null) { state = "closed"; func = void 0; return void 0 }
-        if (Array.isArray(result)) return result
-        try {
-            state = "locked"
-            if (typeof result[Symbol.chain] === "function") return result
-            throw new TypeError("Invalid type for result")
-        } finally {
-            state = "open"
-        }
-    }
-    if (typeof func !== "function") return Promise.reject(new TypeError("callback must be a function"))
-    try {
+Object.chain = function (coll) {
+    function wrapChain(func) {
         var state = "open"
-        return Promise.resolve(coll[Symbol.asyncChain](function (x) {
-            if (state === "locked") return Promise.reject(new ReferenceError("Recursive calls not allowed!"))
-            if (state === "closed") return Promise.reject(new ReferenceError("Chain already closed!"))
+        return function (x) {
+            if (state === "locked") throw new ReferenceError("Recursive calls not allowed!")
+            if (state === "closed") throw new ReferenceError("Chain already closed!")
+            try { var result = func(x) } catch (e) { state = "open"; throw e }
+            if (result == null) { state = "closed"; func = void 0; return void 0 }
+            state = "open"
+            if (Array.isArray(result)) return result
+
             try {
                 state = "locked"
-                return Promise.resolve(func(x)).then(asyncNext)
-            } catch (e) {
-                return Promise.reject(e)
+                if (typeof result[Symbol.chain] === "function") return result
+                throw new TypeError("Invalid type for result")
             } finally {
                 state = "open"
             }
-        }))
-    } catch (e) {
-        return Promise.reject(e)
+        }
     }
+    for (var i = 1; i < arguments.length; i++) {
+        coll = coll[Symbol.chain](wrapChain(arguments[i]))
+    }
+    return coll
 }
-```
 
-In case you're concerned about the size, the two helpers bundled by themselves racks up a whopping 0.4K min+gzip, but that cost will come down when bundled with your app (and [this is worst case - I've seen the addition of code *reduce* gzip'd size](https://github.com/MithrilJS/mithril.js/issues/2095#issuecomment-373222642)). This might seem like a lot for a language feature, but it's not as much as you might think:
+Object.chainAsync = function (coll) {
+    function wrapChain(func) {
+        var state = "open"
+        function asyncNext(result) {
+            if (state === "closed") return void 0
+            if (result == null) { state = "closed"; func = void 0; return void 0 }
+            if (Array.isArray(result)) return result
+            try {
+                state = "locked"
+                if (typeof result[Symbol.chain] === "function") return result
+                throw new TypeError("Invalid type for result")
+            } finally {
+                state = "open"
+            }
+        }
+        return function (x) {
+            if (state === "locked") throw new ReferenceError("Recursive calls not allowed!")
+            if (state === "closed") throw new ReferenceError("Chain already closed!")
+            try { var result = func(x) } catch (e) { state = "open"; throw e }
+            if (result == null) { state = "closed"; func = void 0; return void 0 }
+            state = "open"
+            if (Array.isArray(result)) return result
 
-- My own personal contact form [has more JS than this](https://github.com/isiahmeadows/website/blob/master/src/contact.js), having about 2.0K bytes minified, 1.5K min+gzip with headers and everything. And that literally only does custom validation messaging and AJAX form submission.
-
-- If you have ever used `for ... of` with Babel, this is absolute child's play - Regenerator is about 6.2K minified, 2.3 K min+gzip for its runtime alone, and a simple Babelified `flatMap` (defined below) with the `es2015` preset compiles to almost that much code (about 0.8K minified pre-gzip, 0.4K min+gzip).
-
-    ```js
-    function *flatMap(iter, func) {
-        for (const item of iter) {
-            const result = func(item)
-            if (result != null && typeof result[Symbol.iterator] === "function") {
-                yield* result
-            } else {
-                yield result
+            try {
+                state = "locked"
+                if (typeof result[Symbol.chain] === "function") return result
+                throw new TypeError("Invalid type for result")
+            } finally {
+                state = "open"
             }
         }
     }
-    ```
+    for (var i = 1; i < arguments.length; i++) {
+        coll = coll[Symbol.asyncChain](wrapChain(arguments[i]))
+    }
+    return coll
+}
+```

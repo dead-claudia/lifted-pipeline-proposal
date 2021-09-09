@@ -114,10 +114,10 @@ Or, using this proposal:
 
 ```js
 const toSlug =
-    _ => _.split(" ")
-    :> _ => _.map(str => str.toLowerCase())
-    :> _ => _.join("-")
-    :> encodeURIComponent
+    (_ => _.split(" "))
+    :> ^.map(str => str.toLowerCase())
+    :> ^.join("-")
+    :> encodeURIComponent(^)
 ```
 
 Another scenario is when you just want to define a long stream:
@@ -180,23 +180,24 @@ function eachEvent(elem, event) {
 
 const refreshElem = document.querySelector(".refresh")
 const refreshClickStream = fromEvent(refreshElem, "click")
+const randomItem = list => list[randInt(list.length)]
 const listUsers = (async () => refreshClickStream
     :> `https://api.github.com/users?since=${randInt(500)}`
-    :> await () => window.fetch(url)
-    :> await async response => response.json()
-    :> listUsers => listUsers[randInt(listUsers.length)])
+    :> await window.fetch(^)
+    :> await ^.json()
+    :> randomItem(^)
 )()
 
 Observable.of([".close1", ".close2", ".close3"])
 :> selector => document.querySelector(selector)
 >:> (async elem => Object.combine(
-    refreshClickStream :> () => ({elem})
+    refreshClickStream :> {elem}
     Object.combine(
         fromEvent(baseElem, "click"), await listUsers,
         (_, suggestion) => ({elem, suggestion})
     )
 }))
-|> o => o.subscribe({elem, suggestion}) => {
+|> ^.subscribe({elem, suggestion}) => {
     if (suggestion != null) {
         // show the selector's suggestion DOM element and render the data
     } else {
@@ -317,11 +318,11 @@ function pipe(x, f) {
 
 It doesn't look like much, but it's incredibly useful and freeing with the right method implementations.
 
-- Want to get all the `name`s out of an array of records? Use `array :> r => r.name`.
-- Want to get a stream of input values from an event stream? Use `stream :> e => e.target.value`.
-- Is the function returning an object you only want the `contents` of? Use `func :> r => r.contents`.
-- Want to shoehorn a function that takes a `value` and make it take events instead? Use `e => e.target.value :> setValue`.
-- Have a `Set` of numbers and strings, and you only want numbers? Use `set :> Number`
+- Want to get all the `name`s out of an array of records? Use `array :> ^.name`.
+- Want to get a stream of input values from an event stream? Use `stream :> ^.target.value`.
+- Is the function returning an object you only want the `contents` of? Use `func :> ^.contents`.
+- Want to shoehorn a function that takes a `value` and make it take events instead? Use `(e => e.target.value) :> setValue(^)`.
+- Have a `Set` of numbers and strings, and you only want numbers? Use `set :> Number(^)`
 
 If you want to dig deeper into what this really does and what all it entails, [this contains more details on the proposal itself](https://github.com/isiahmeadows/lifted-pipeline-strawman/blob/master/pipeline-lift.md).
 
@@ -357,7 +358,7 @@ After doing a bit of research to see what they really build off of, I managed to
 
 ```js
 // What you write:
-x >:> f
+x >:> f(^)
 
 // What this does (roughly):
 function chain(x, f) {
@@ -384,7 +385,7 @@ It's not as simple and foolproof to implement as the first two, but here's how y
 This helper makes it possible to filter, flatten, and truncate things generically. For example, the common `.takeWhile` you find for [collections](https://lodash.com/docs#takeWhile) and [observables](http://reactivex.io/rxjs/class/es6/Observable.js~Observable.html#instance-method-takeWhile) could be generically translated into a *very* simple helper:
 
 ```js
-// Use like so: `coll >:> takeWhile(cond)`
+// Use like so: `coll >:> takeWhile(^, cond)`
 function takeWhile(cond) {
     return x => cond(x) ? [x] : undefined
 }
@@ -479,7 +480,7 @@ function getUserBanner(banners, user) {
 // New
 function getUserBanner(banners, user) {
     return Object.box(user?.accountDetails?.address?.province)
-        :> p => banners[p]
+        :> banners[^]
 }
 ```
 
@@ -528,7 +529,7 @@ Depending on whether [cancellation](https://github.com/tc39/proposal-cancellatio
 - And, of course, the [pipeline operator proposal](https://github.com/tc39/proposal-pipeline-operator), in which this shares a *lot* of genes with.
 - This isn't even my first iteration into the foray of iterative, async, parallel, and otherise non-von Neumann stuff.
     - Emulated `async`/`await` in LiveScript: https://gist.github.com/isiahmeadows/0ea14936a1680065a3a3
-    - Module-based parallel JS strawman: https://gist.github.com/isiahmeadows/a01799b4dc9019c55dfcd809450afd24
+    - Module-based parallel JS strawperson: https://gist.github.com/isiahmeadows/a01799b4dc9019c55dfcd809450afd24
         - Some parts evolved into a library for worker pools: https://github.com/isiahmeadows/invoke-parallel
         - Since found a similar (smaller-scoped) equivalent for browsers: https://github.com/developit/workerize-loader
     - Generator-inspired async proposal: https://github.com/isiahmeadows/non-linear-proposal
@@ -536,7 +537,7 @@ Depending on whether [cancellation](https://github.com/tc39/proposal-cancellatio
     - Better promise abstraction: https://gist.github.com/isiahmeadows/2563c9dcf8b19bc2875e5cfb3d7709ad
         - TL;DR: you can still make things easy for consumers without making it so difficult for producers.
 
-## Related strawmen/proposals ([▲](#lifted-pipeline-proposal))
+## Related strawpeople/proposals ([▲](#lifted-pipeline-proposal))
 
 This is most certainly *not* on its own little island - [even the introduction shows this](#introduction). Here's several other existing proposals that could potentially benefit, or in some cases, be truly amplified, from this proposal, whether via being able to integrate with this well to its benefit, enhancing and complementing this proposal itself, or just being generally useful alongside it:
 
